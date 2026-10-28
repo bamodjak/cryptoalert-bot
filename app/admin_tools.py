@@ -160,13 +160,13 @@ async def pending_payments_cmd(m: Message, session: AsyncSession):
         select(ManualPayment)
         .where(ManualPayment.status == "pending")
         .order_by(ManualPayment.created_at.asc())
-        .limit(50)
+        .limit(25)
     )).all()
     if not rows:
         await m.answer("No pending manual payments.")
         return
     lines = [
-        f"#{p.id} · user {p.user_id} · {p.method} · {p.amount} {p.currency} · {p.premium_days}d · ref {html.escape(p.reference or '-')}"
+        f"#{p.id} · user {p.user_id} · {p.method} · {p.amount} {p.currency} · {p.premium_days}d · ref {html.escape((p.reference or '-')[:40])}"
         for p in rows
     ]
     await m.answer("<b>Pending manual payments</b>\n" + "\n".join(lines))
