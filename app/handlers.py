@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics
 from .config import settings
-from .db import Alert, Payment, User, utcnow
+from .db import AdminAudit, Alert, Payment, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_referral
@@ -616,4 +616,5 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
         note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h for unused time."
     else:
         note = " This charge has no entitlement ledger; Premium expiry was left unchanged."
+    session.add(AdminAudit(admin_id=m.from_user.id, action="stars_refund", target_user_id=p.user_id, details=f"payment_id={p.id}; amount={p.amount}; entitlement_tracked={p.entitlement_tracked}"))
     await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")
