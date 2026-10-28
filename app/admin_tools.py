@@ -364,6 +364,7 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     if not claimed:
         await cb.answer("This broadcast has already been processed.", show_alert=True)
         return
+    await cb.answer("Broadcast started.")
     ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
     sent = 0
     failed = 0
@@ -384,4 +385,3 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
     await redis.delete(payload_key)
     await cb.message.edit_text(f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
-    await cb.answer()
