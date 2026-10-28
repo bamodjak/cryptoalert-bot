@@ -581,5 +581,5 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
                 future_payment.entitlement_end -= remaining
         note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h for unused time."
     else:
-        note = " Legacy charge had no entitlement ledger; Premium expiry was left unchanged."
+        note = " This charge has no entitlement ledger; Premium expiry was left unchanged."
     await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")
