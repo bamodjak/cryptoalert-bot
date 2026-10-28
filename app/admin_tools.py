@@ -126,11 +126,17 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     if not currency.isalnum() or len(currency) > 12:
         await m.answer("Currency must be a short code such as DZD, EUR, or XTR.")
         return
+    if method == "stars" and currency != "XTR":
+        await m.answer("For Telegram Stars, use currency XTR.")
+        return
     user = await session.get(User, user_id)
     if not user:
         await m.answer("User not found. They must start the bot first.")
         return
     reference = parts[5] if len(parts) > 5 else None
+    if reference and len(reference) > 128:
+        await m.answer("Reference must be 128 characters or fewer.")
+        return
     if reference and await session.scalar(select(ManualPayment.id).where(ManualPayment.reference == reference)):
         await m.answer("That payment reference is already recorded.")
         return
