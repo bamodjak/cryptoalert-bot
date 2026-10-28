@@ -1,18 +1,34 @@
 # Crypto Alert Bot (Telegram)
 
-Production-ready price & Ethereum gas alert bot with a Telegram Stars paywall.
+Telegram bot for crypto price and Ethereum gas alerts with a Telegram Stars Premium tier.
 
 **Stack:** aiogram 3 · PostgreSQL 16 (SQLAlchemy 2 async + Alembic) · Redis 7 · Docker Compose · Prometheus metrics · health check · admin kill switch.
 
 ## Features
 - `/price btc`, `/alert btc > 70000`, `/alert eth below 2.5k`, `/alerts`, `/del 12`
 - `/gas` and `/gasalert 0.5` (Premium) via a public Ethereum RPC
-- Free tier: 3 alerts. Premium (Telegram Stars, default 250 ⭐ / 30 days): 50 alerts + gas alerts
+- Free tier: 30 alerts. Premium (Telegram Stars, default 1,500 ⭐ / 30 days): 500 alerts + gas alerts
 - `/paysupport` and `/terms` (Telegram requires these for Stars payments)
 - Admin: `/kill`, `/resume`, `/stats`, `/refund <charge_id>`
 - Anti-spam throttle (30 msgs/min/user), auto-cleanup when a user blocks the bot
 - Prices from CoinGecko (cached in Redis, batched 100 coins per call)
 - `GET /health` (DB + Redis + worker freshness) and `GET /metrics` (Prometheus)
+
+## Admin tools (feature branch)
+
+Set `OWNER_ID` to the owner's numeric Telegram user ID. Keep `ADMIN_IDS` limited to trusted numeric user IDs. The owner receives Premium without payment; other admins do not automatically receive it.
+
+Admin commands:
+- `/users [ID or username]` — find users
+- `/grant USER_ID DAYS [reason]` — grant Premium and record the grant
+- `/suspend USER_ID [reason]` / `/unsuspend USER_ID` — reversible access control with audit history
+- `/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]` — record a pending payment (cash, in-person cash, Stars, BaridiMob, CCP, or bank transfer)
+- `/pendingpay` — list pending manual payments; `/verify PAYMENT_ID` / `/rejectpay PAYMENT_ID` — verify or reject pending manual payments
+- `/revenue` — show unrefunded Stars and verified manual totals by currency
+- `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
+- `/broadcast announcement text` — preview and explicitly confirm before sending
+
+Before enabling this feature on an existing database, back it up and run `alembic upgrade head` once with the new code. The CI workflow checks Python compilation and imports, generates offline migration SQL, applies the complete Alembic chain to an ephemeral PostgreSQL 16 database, and runs unit tests. It does not test against your live database or Telegram. Keep this branch unmerged until staging checks pass. New Stars purchases are processed idempotently and record their Premium entitlement interval so refunds can reduce unused time without blindly deleting unrelated Premium time. Later tracked intervals are shifted when needed. Suspended users are blocked by update middleware and excluded from alert delivery and giveaway draws. Legacy payments created before this migration lack per-charge intervals; automated refunds are blocked for those records unless an admin explicitly uses `/refund CHARGE_ID ALLOW_LEGACY` after reviewing the account. That override leaves Premium expiry unchanged.
 
 ## 1. Create the bot
 1. In Telegram, open @BotFather → `/newbot` → copy the token.

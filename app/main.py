@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 import signal
 import time
 
@@ -19,6 +20,7 @@ from . import worker
 from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
+from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .middlewares import KILL_KEY, DbSessionMiddleware, KillSwitchMiddleware, ThrottleMiddleware
 from .prices import PriceService
 
@@ -38,26 +40,41 @@ COMMANDS = [
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
 
 
+def register_routers(dp: Dispatcher) -> None:
+    # Specific admin-tools callbacks must precede the generic admin:* callback handler.
+    dp.include_routers(admin_tools_router, admin, giveaway_public_router, router)
+
+
 def build_web_app(redis: Redis) -> web.Application:
     async def health(_: web.Request) -> web.Response:
         try:
             await redis.ping()
             async with Session() as s:
                 await s.execute(text("SELECT 1"))
-        except Exception as e:
-            return web.json_response({"ok": False, "error": str(e)}, status=503, headers=CORS_HEADERS)
+        except Exception:
+            log.exception("health check failed")
+            return web.json_response({"ok": False, "error": "dependency check failed"}, status=503, headers=CORS_HEADERS)
         stale = worker.last_success and time.time() - worker.last_success > settings.check_interval * 5
         if stale:
             return web.json_response({"ok": False, "error": "alert worker stale"}, status=503, headers=CORS_HEADERS)
         return web.json_response({"ok": True}, headers=CORS_HEADERS)
 
-    async def metrics_view(_: web.Request) -> web.Response:
+    def metrics_authorized(request: web.Request) -> bool:
+        token = settings.metrics_token.get_secret_value()
+        supplied = request.headers.get("Authorization", "")
+        return bool(token) and secrets.compare_digest(supplied, f"Bearer {token}")
+
+    async def metrics_view(request: web.Request) -> web.Response:
+        if not metrics_authorized(request):
+            return web.Response(status=404)
         return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST, **CORS_HEADERS})
 
-    async def stats_json(_: web.Request) -> web.Response:
+    async def stats_json(request: web.Request) -> web.Response:
+        if not metrics_authorized(request):
+            return web.Response(status=404)
         async with Session() as s:
             users = await s.scalar(select(func.count()).select_from(User)) or 0
-            premium = await s.scalar(select(func.count()).select_from(User).where(User.premium_until > utcnow())) or 0
+            premium = await s.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
             alerts = await s.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
             stars = await s.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
             shared = await s.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
@@ -98,7 +115,7 @@ async def main() -> None:
     dp.update.outer_middleware(KillSwitchMiddleware(redis))
     dp.update.middleware(DbSessionMiddleware())
     dp.message.middleware(ThrottleMiddleware(redis))
-    dp.include_routers(admin, router)
+    register_routers(dp)
 
     await bot.set_my_commands(COMMANDS)
 

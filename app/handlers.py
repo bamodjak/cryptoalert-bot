@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics
 from .config import settings
-from .db import Alert, Payment, User, utcnow
+from .db import AdminAudit, Alert, Payment, User, utcnow
+from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_referral
 from .prices import PriceError, PriceService
@@ -298,11 +299,17 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
 
 @router.callback_query(F.data.startswith("dash:"))
 async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    # Acknowledge Telegram callback queries before any database/network work; Telegram expires them quickly.
+    try:
+        await cb.answer()
+    except TelegramBadRequest:
+        # A stale callback cannot be acknowledged, but its handler can still return safely.
+        pass
+
     u = await get_user(session, cb.from_user)
     action = (cb.data or "").split(":", 1)[1]
 
     if not cb.message:
-        await cb.answer()
         return
 
     if action == "price":
@@ -337,7 +344,6 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
             "Use /premium to purchase through Telegram."
         )
     else:
-        await cb.answer("Unknown action.")
         return
 
     try:
@@ -345,7 +351,6 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
-    await cb.answer()
 
 
 @admin.callback_query(F.data.startswith("admin:"))
@@ -360,16 +365,64 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         rows = [
             [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
             [
+                InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
+                InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
+            ],
+            [
+                InlineKeyboardButton(text="🎁 Giveaways", callback_data="admin:giveaways"),
+                InlineKeyboardButton(text="📣 Broadcast", callback_data="admin:broadcasthelp"),
+            ],
+            [InlineKeyboardButton(text="🧭 Full command guide", callback_data="admin:guide")],
+            [
                 InlineKeyboardButton(text="⏸ Pause bot", callback_data="admin:pause"),
                 InlineKeyboardButton(text="▶️ Resume bot", callback_data="admin:resume"),
             ],
             [InlineKeyboardButton(text="💸 Refund help", callback_data="admin:refund")],
             [InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")],
         ]
+    elif action == "guide":
+        text = (
+            "<b>🧭 Admin command guide</b>\n\n"
+            "<b>Users</b>\n/users [ID or username]\n/grant USER_ID DAYS [reason]\n"
+            "/suspend USER_ID [reason]\n/unsuspend USER_ID\n\n"
+            "<b>Manual payments</b>\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\n"
+            "Methods: cash, cash_person, stars, baridimob, ccp, bank\n/verify PAYMENT_ID\n"
+            "/rejectpay PAYMENT_ID\n/pendingpay — list pending manual payments\n/revenue\n\n"
+            "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
+            "Participants use /join GIVEAWAY_ID\n\n"
+            "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "users":
+        text = (
+            "<b>👥 Users &amp; Premium</b>\n/users [ID or username] — find users\n"
+            "/grant USER_ID DAYS [reason] — grant free Premium\n"
+            "/suspend USER_ID [reason] — suspend access\n/unsuspend USER_ID — restore access"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "payments":
+        text = (
+            "<b>💳 Payments</b>\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\n"
+            "/pendingpay — list pending payments\n/verify PAYMENT_ID — verify and grant Premium\n"
+            "/rejectpay PAYMENT_ID — reject payment\n/revenue — revenue by currency"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "giveaways":
+        text = (
+            "<b>🎁 Giveaways</b>\n/giveaway TITLE | PREMIUM_DAYS | WINNERS\n"
+            "Users join with /join GIVEAWAY_ID\n/draw GIVEAWAY_ID — select and record winners"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "broadcasthelp":
+        text = (
+            "<b>📣 Broadcast</b>\n/broadcast your announcement\n"
+            "Review the preview, then confirm. Broadcasts go to registered, non-suspended users."
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "stats":
         users = await session.scalar(select(func.count()).select_from(User)) or 0
         premium = await session.scalar(
-            select(func.count()).select_from(User).where(User.premium_until > utcnow())
+            select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))
         ) or 0
         alerts = await session.scalar(
             select(func.count()).select_from(Alert).where(Alert.active.is_(True))
@@ -392,7 +445,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         text = "▶️ Pause switch disabled."
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "refund":
-        text = "💸 To refund a payment, use:\n/refund CHARGE_ID\n\nConfirm the charge ID from your payment records first."
+        text = "💸 To refund a payment, use:\n/refund CHARGE_ID\n\nLegacy/untracked payments require manual review and the explicit override:\n/refund CHARGE_ID ALLOW_LEGACY"
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     else:
         await cb.answer("Unknown action.")
@@ -414,6 +467,8 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
 @router.message(Command("premium"))
 async def cmd_premium(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
+    if u.id == settings.owner_id:
+        return await m.answer("Owner account: Premium is enabled for free.")
     if u.is_premium:
         await m.answer(f"Premium is active until {u.premium_until:%Y-%m-%d} UTC. Paying again adds {settings.premium_days} days.")
     await m.answer_invoice(
@@ -427,7 +482,12 @@ async def cmd_premium(m: Message, session: AsyncSession):
 
 @router.pre_checkout_query()
 async def pre_checkout(q: PreCheckoutQuery):
-    if q.invoice_payload.startswith("premium:") and q.currency == "XTR":
+    valid_invoice = (
+        q.invoice_payload == f"premium:{settings.premium_days}"
+        and q.currency == "XTR"
+        and q.total_amount == settings.premium_price_stars
+    )
+    if valid_invoice:
         await q.answer(ok=True)
     else:
         await q.answer(ok=False, error_message="This invoice is no longer valid.")
@@ -435,12 +495,45 @@ async def pre_checkout(q: PreCheckoutQuery):
 
 @router.message(F.successful_payment)
 async def paid(m: Message, session: AsyncSession):
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     sp = m.successful_payment
-    days = int(sp.invoice_payload.split(":")[1])
     u = await get_user(session, m.from_user)
-    base = u.premium_until if u.is_premium else utcnow()
-    u.premium_until = base + timedelta(days=days)
-    session.add(Payment(user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount))
+    if (
+        sp.invoice_payload != f"premium:{settings.premium_days}"
+        or sp.currency != "XTR"
+        or sp.total_amount != settings.premium_price_stars
+    ):
+        inserted = await session.scalar(
+            pg_insert(Payment)
+            .values(
+                user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount,
+                entitlement_tracked=False,
+            )
+            .on_conflict_do_nothing(index_elements=["charge_id"])
+            .returning(Payment.id)
+        )
+        if inserted is None:
+            await m.answer("This payment was already recorded; no duplicate action was taken.")
+        else:
+            await m.answer(f"Payment recorded but could not be matched to the current Premium offer. No Premium was added. Contact {settings.support_contact} with this payment.")
+        return
+    days = settings.premium_days
+    base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
+    expiry = base + timedelta(days=days)
+    inserted = await session.scalar(
+        pg_insert(Payment)
+        .values(
+            user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount,
+            premium_days=days, entitlement_start=base, entitlement_end=expiry, entitlement_tracked=True,
+        )
+        .on_conflict_do_nothing(index_elements=["charge_id"])
+        .returning(Payment.id)
+    )
+    if inserted is None:
+        await m.answer("This payment was already processed; Premium was not added twice.")
+        return
+    u.premium_until = expiry
     metrics.PAYMENTS.inc()
     await m.answer(
         f"Thank you! Premium is active until {u.premium_until:%Y-%m-%d} UTC.",
@@ -478,7 +571,7 @@ async def cmd_resume(m: Message, redis: Redis):
 @admin.message(Command("stats"))
 async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
     users = await session.scalar(select(func.count()).select_from(User)) or 0
-    premium = await session.scalar(select(func.count()).select_from(User).where(User.premium_until > utcnow())) or 0
+    premium = await session.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
     alerts = await session.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
     stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
     shared = await session.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
@@ -496,13 +589,44 @@ async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
 
 @admin.message(Command("refund"))
 async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, bot: Bot):
-    charge = (command.args or "").strip()
-    p = await session.scalar(select(Payment).where(Payment.charge_id == charge)) if charge else None
+    parts = (command.args or "").split()
+    charge = parts[0] if parts else ""
+    allow_legacy = len(parts) > 1 and parts[1].upper() == "ALLOW_LEGACY"
+    p = await session.scalar(select(Payment).where(Payment.charge_id == charge).with_for_update()) if charge else None
     if not p or p.refunded:
-        return await m.answer("Usage: /refund <charge_id> (unrefunded payment)")
+        return await m.answer("Usage: /refund CHARGE_ID (unrefunded payment)")
+    if not p.entitlement_tracked and not allow_legacy:
+        return await m.answer(
+            "This older/unmatched payment has no Premium entitlement record, so no refund was issued. "
+            "Review the account manually first. Explicit override: /refund CHARGE_ID ALLOW_LEGACY "
+            "(Premium expiry will remain unchanged)."
+        )
     await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
     p.refunded = True
     u = await session.get(User, p.user_id)
-    if u:
-        u.premium_until = utcnow()
-    await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.")
+    if u and p.entitlement_tracked and p.entitlement_start and p.entitlement_end and u.premium_until:
+        now = utcnow()
+        remaining = refundable_unused_duration(
+            p.entitlement_start, p.entitlement_end, u.premium_until, now
+        )
+        if remaining:
+            u.premium_until = max(now, u.premium_until - remaining)
+            future_payments = (await session.scalars(
+                select(Payment)
+                .where(
+                    Payment.user_id == p.user_id,
+                    Payment.id != p.id,
+                    Payment.refunded.is_(False),
+                    Payment.entitlement_tracked.is_(True),
+                    Payment.entitlement_start >= p.entitlement_end,
+                )
+                .with_for_update()
+            )).all()
+            for future_payment in future_payments:
+                future_payment.entitlement_start -= remaining
+                future_payment.entitlement_end -= remaining
+        note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h for unused time."
+    else:
+        note = " This charge has no entitlement ledger; Premium expiry was left unchanged."
+    session.add(AdminAudit(admin_id=m.from_user.id, action="stars_refund", target_user_id=p.user_id, details=f"payment_id={p.id}; amount={p.amount}; entitlement_tracked={p.entitlement_tracked}"))
+    await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")

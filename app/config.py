@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     bot_token: SecretStr
     bot_username: str = "Orbsat16bot"
     admin_ids: str = ""  # comma-separated Telegram user ids
+    owner_id: int = 0  # numeric Telegram user ID; owner receives free Premium
 
     database_url: str = "postgresql+asyncpg://bot:bot@db:5432/bot"
     redis_url: str = "redis://redis:6379/0"
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     webhook_base_url: str = ""
     webhook_path: str = "/tg/webhook"
     webhook_secret: str = ""
+    metrics_token: SecretStr = SecretStr("")  # protect /metrics and /stats.json; disabled when unset
     host: str = "0.0.0.0"
     port: int = 8080
 
@@ -58,7 +60,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def admin_id_set(self) -> frozenset[int]:
-        return frozenset(int(x) for x in self.admin_ids.replace(" ", "").split(",") if x.isdigit())
+        return frozenset(({self.owner_id} if self.owner_id > 0 else set()) | {int(x) for x in self.admin_ids.replace(" ", "").split(",") if x.isdigit()})
 
 
 settings = Settings()

@@ -5,7 +5,7 @@ from aiogram.types import Message, TelegramObject, Update
 from redis.asyncio import Redis
 
 from .config import settings
-from .db import Session
+from .db import Session, User
 
 KILL_KEY = "bot:killed"
 
@@ -20,6 +20,18 @@ class KillSwitchMiddleware(BaseMiddleware):
         user = data.get("event_from_user")
         if user and user.id in settings.admin_id_set:
             return await handler(event, data)
+        if user and user.id not in settings.admin_id_set:
+            async with Session() as session:
+                account = await session.get(User, user.id)
+                if account and account.suspended:
+                    if isinstance(event, Update):
+                        if event.message:
+                            await event.message.answer("Your account is currently suspended. Contact support if you believe this is a mistake.")
+                        elif event.callback_query:
+                            await event.callback_query.answer("Your account is suspended.", show_alert=True)
+                        elif event.pre_checkout_query:
+                            await event.pre_checkout_query.answer(ok=False, error_message="This account is suspended.")
+                    return None
         if await self.redis.exists(KILL_KEY):
             if isinstance(event, Update):
                 if event.pre_checkout_query:
