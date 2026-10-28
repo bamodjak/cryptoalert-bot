@@ -6,6 +6,7 @@ Manual payment records do not activate Premium until an admin verifies them.
 import random
 import html
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
@@ -114,11 +115,15 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     if method not in allowed or days < 1 or days > 3650:
         await m.answer("Unsupported method or invalid Premium duration.")
         return
-    if not amount.replace(".", "", 1).isdigit():
-        await m.answer("Amount must be a positive number.")
+    try:
+        amount_value = Decimal(amount)
+    except InvalidOperation:
+        amount_value = Decimal("0")
+    if not amount_value.is_finite() or amount_value <= 0 or amount_value.as_tuple().exponent < -2:
+        await m.answer("Amount must be positive and use at most two decimal places.")
         return
-    if float(amount) <= 0:
-        await m.answer("Amount must be a positive number.")
+    if not currency.isalnum() or len(currency) > 12:
+        await m.answer("Currency must be a short code such as DZD, EUR, or XTR.")
         return
     user = await session.get(User, user_id)
     if not user:
@@ -193,10 +198,10 @@ async def revenue_cmd(m: Message, session: AsyncSession):
         .group_by(ManualPayment.currency)
         .order_by(ManualPayment.currency)
     )).all()
-    amounts = "\\n".join(f"Verified {currency}: {amount}" for currency, amount in totals) or "Verified manual amounts: none"
+    amounts = "\n".join(f"Verified {currency}: {amount}" for currency, amount in totals) or "Verified manual amounts: none"
     await m.answer(
-        f"<b>Revenue overview</b>\\nUnrefunded Telegram Stars: {stars} ⭐\\n"
-        f"Manual payments verified: {verified}\\nManual payments pending: {pending}\\n{amounts}"
+        f"<b>Revenue overview</b>\nUnrefunded Telegram Stars: {stars} ⭐\n"
+        f"Manual payments verified: {verified}\nManual payments pending: {pending}\n{amounts}"
     )
 
 
