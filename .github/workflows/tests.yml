@@ -21,4 +21,5 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q app alembic tests
+      - run: alembic upgrade head --sql > /tmp/migration.sql
       - run: pytest -q
