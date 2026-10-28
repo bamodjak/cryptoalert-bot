@@ -359,10 +359,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         text = "<b>🛡 Admin Panel</b>\nChoose an action:"
         rows = [
             [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
-            [InlineKeyboardButton(text="👥 User tools: /users /grant /suspend", callback_data="admin:refund")],
-            [InlineKeyboardButton(text="💳 Payments: /manualpay /verify /revenue", callback_data="admin:refund")],
-            [InlineKeyboardButton(text="🎁 Giveaways: /giveaway /draw", callback_data="admin:refund")],
-            [InlineKeyboardButton(text="📣 Broadcast: /broadcast", callback_data="admin:refund")],
+            [InlineKeyboardButton(text="🧭 Admin command guide", callback_data="admin:guide")],
             [
                 InlineKeyboardButton(text="⏸ Pause bot", callback_data="admin:pause"),
                 InlineKeyboardButton(text="▶️ Resume bot", callback_data="admin:resume"),
@@ -370,6 +367,19 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             [InlineKeyboardButton(text="💸 Refund help", callback_data="admin:refund")],
             [InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")],
         ]
+    elif action == "guide":
+        text = (
+            "<b>🧭 Admin command guide</b>\\n\\n"
+            "<b>Users</b>\\n/users [ID or username]\\n/grant USER_ID DAYS [reason]\\n"
+            "/suspend USER_ID [reason]\\n/unsuspend USER_ID\\n\\n"
+            "<b>Manual payments</b>\\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\\n"
+            "Methods: cash, cash_person, baridimob, ccp, bank\\n/verify PAYMENT_ID\\n"
+            "/rejectpay PAYMENT_ID\\n/revenue\\n\\n"
+            "<b>Giveaways</b>\\n/giveaway TITLE | DAYS | WINNERS\\n/draw GIVEAWAY_ID\\n"
+            "Participants use /join GIVEAWAY_ID\\n\\n"
+            "<b>Broadcast</b>\\n/broadcast announcement text\\nPreview first, then confirm."
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "stats":
         users = await session.scalar(select(func.count()).select_from(User)) or 0
         premium = await session.scalar(
@@ -509,6 +519,10 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
     p.refunded = True
     u = await session.get(User, p.user_id)
-    if u:
-        u.premium_until = utcnow()
-    await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.")
+    # Do not erase the user's entire Premium entitlement: this charge may overlap
+    # with other purchases or a manual grant. Per-charge entitlement accounting is
+    # not yet stored, so retain the existing expiry rather than revoke unrelated time.
+    await m.answer(
+        f"Refunded {p.amount} Stars to {p.user_id}. Existing Premium expiry was left unchanged "
+        "because entitlements are not yet tracked per charge."
+    )
