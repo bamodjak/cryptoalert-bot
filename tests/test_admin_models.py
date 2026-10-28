@@ -90,3 +90,14 @@ def test_refund_calculation_is_zero_for_expired_entitlement():
     end = datetime(2026, 1, 31, tzinfo=timezone.utc)
     expiry = datetime(2026, 1, 31, tzinfo=timezone.utc)
     assert refundable_unused_duration(start, end, expiry, now) == timedelta(0)
+
+
+
+def test_specific_admin_callbacks_are_registered_before_generic_admin_router():
+    from aiogram import Dispatcher
+    from app.main import register_routers
+
+    dp = Dispatcher()
+    register_routers(dp)
+    names = [router.name for router in dp.sub_routers]
+    assert names.index("admin_tools") < names.index("admin")
