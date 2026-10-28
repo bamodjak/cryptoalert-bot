@@ -1,0 +1,284 @@
+"""Administrative workflows for grants, manual payments, users and giveaways.
+
+All mutations are restricted to ADMIN_IDS/OWNER_ID and recorded in admin_audit.
+Manual payment records do not activate Premium until an admin verifies them.
+"""
+import random
+from datetime import timedelta
+
+from aiogram import Bot, F, Router
+from aiogram.filters import Command, CommandObject
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .config import settings
+from .db import (
+    AdminAudit, Giveaway, GiveawayEntry, ManualPayment, PremiumGrant, User, utcnow
+)
+
+router = Router(name="admin_tools")
+router.message.filter(F.from_user.id.in_(settings.admin_id_set))
+
+
+async def audit(session: AsyncSession, admin_id: int, action: str, target: int | None = None, details: str | None = None) -> None:
+    session.add(AdminAudit(admin_id=admin_id, action=action, target_user_id=target, details=details))
+
+
+def premium_base(user: User):
+    return user.premium_until if user.premium_until and user.premium_until > utcnow() else utcnow()
+
+
+@router.message(Command("users"))
+async def users_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    """List recent users, or search by exact Telegram ID / username fragment."""
+    query = (command.args or "").strip()
+    stmt = select(User).order_by(User.created_at.desc()).limit(20)
+    if query.isdigit():
+        stmt = select(User).where(User.id == int(query)).limit(20)
+    elif query:
+        stmt = select(User).where(User.username.ilike(f"%{query.lstrip('@')}%")).order_by(User.created_at.desc()).limit(20)
+    rows = (await session.scalars(stmt)).all()
+    if not rows:
+        await m.answer("No users found.")
+        return
+    lines = []
+    for u in rows:
+        until = u.premium_until.strftime("%Y-%m-%d UTC") if u.premium_until else "not set"
+        lines.append(f"{u.id} @{u.username or 'no-username'} · Premium until: {until} · suspended={u.suspended}")
+    await m.answer("<b>Users</b>\n" + "\n".join(lines))
+
+
+@router.message(Command("grant"))
+async def grant_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    """Usage: /grant USER_ID DAYS [reason]"""
+    parts = (command.args or "").split(maxsplit=2)
+    if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        await m.answer("Usage: /grant USER_ID DAYS [reason]")
+        return
+    user_id, days = int(parts[0]), int(parts[1])
+    if days < 1 or days > 3650:
+        await m.answer("Days must be between 1 and 3650.")
+        return
+    user = await session.get(User, user_id)
+    if not user:
+        await m.answer("User not found. They must start the bot first.")
+        return
+    reason = parts[2] if len(parts) > 2 else "admin grant"
+    user.premium_until = premium_base(user) + timedelta(days=days)
+    session.add(PremiumGrant(user_id=user_id, granted_by=m.from_user.id, days=days, reason=reason[:256]))
+    await audit(session, m.from_user.id, "premium_grant", user_id, f"days={days}; reason={reason[:200]}")
+    await m.answer(f"Granted {days} Premium days to {user_id}; expiry {user.premium_until:%Y-%m-%d} UTC.")
+
+
+async def set_suspension(m: Message, session: AsyncSession, suspended: bool, args: str):
+    parts = args.split(maxsplit=1)
+    if not parts or not parts[0].isdigit():
+        await m.answer("Usage: /suspend USER_ID [reason] or /unsuspend USER_ID")
+        return
+    user_id = int(parts[0])
+    if user_id == m.from_user.id or user_id == settings.owner_id:
+        await m.answer("You cannot suspend yourself or the configured owner.")
+        return
+    user = await session.get(User, user_id)
+    if not user:
+        await m.answer("User not found.")
+        return
+    user.suspended = suspended
+    reason = parts[1][:200] if len(parts) > 1 else ""
+    await audit(session, m.from_user.id, "suspend" if suspended else "unsuspend", user_id, reason)
+    await m.answer(f"User {user_id} {'suspended' if suspended else 'restored'}.")
+
+
+@router.message(Command("suspend"))
+async def suspend_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    await set_suspension(m, session, True, command.args or "")
+
+
+@router.message(Command("unsuspend"))
+async def unsuspend_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    await set_suspension(m, session, False, command.args or "")
+
+
+@router.message(Command("manualpay"))
+async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    """Usage: /manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]"""
+    parts = (command.args or "").split()
+    if len(parts) < 5 or not parts[0].isdigit() or not parts[4].isdigit():
+        await m.answer("Usage: /manualpay USER_ID cash|baridimob|ccp|bank|cash_person AMOUNT CURRENCY DAYS [reference]")
+        return
+    user_id, method, amount, currency, days = int(parts[0]), parts[1].lower(), parts[2], parts[3].upper(), int(parts[4])
+    allowed = {"cash", "baridimob", "ccp", "bank", "cash_person"}
+    if method not in allowed or days < 1 or days > 3650:
+        await m.answer("Unsupported method or invalid Premium duration.")
+        return
+    if not amount.replace(".", "", 1).isdigit():
+        await m.answer("Amount must be a positive number.")
+        return
+    if float(amount) <= 0:
+        await m.answer("Amount must be a positive number.")
+        return
+    user = await session.get(User, user_id)
+    if not user:
+        await m.answer("User not found. They must start the bot first.")
+        return
+    reference = parts[5] if len(parts) > 5 else None
+    if reference and await session.scalar(select(ManualPayment.id).where(ManualPayment.reference == reference)):
+        await m.answer("That payment reference is already recorded.")
+        return
+    payment = ManualPayment(
+        user_id=user_id, recorded_by=m.from_user.id, method=method, amount=amount,
+        currency=currency, premium_days=days, reference=reference, status="pending"
+    )
+    session.add(payment)
+    await session.flush()
+    await audit(session, m.from_user.id, "manual_payment_pending", user_id, f"payment_id={payment.id}; method={method}; amount={amount} {currency}")
+    await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
+
+
+@router.message(Command("verify"))
+async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncSession, bot: Bot):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await m.answer("Usage: /verify PAYMENT_ID")
+        return
+    payment = await session.get(ManualPayment, int(arg))
+    if not payment or payment.status != "pending":
+        await m.answer("Pending payment not found.")
+        return
+    user = await session.get(User, payment.user_id)
+    if not user:
+        await m.answer("User record not found; payment left pending.")
+        return
+    payment.status = "verified"
+    payment.verified_by = m.from_user.id
+    payment.verified_at = utcnow()
+    user.premium_until = premium_base(user) + timedelta(days=payment.premium_days)
+    session.add(PremiumGrant(user_id=user.id, granted_by=m.from_user.id, days=payment.premium_days, reason=f"manual payment #{payment.id}"))
+    await audit(session, m.from_user.id, "manual_payment_verified", user.id, f"payment_id={payment.id}; method={payment.method}; amount={payment.amount} {payment.currency}")
+    await m.answer(f"Verified payment #{payment.id}; granted {payment.premium_days} Premium days to {user.id}.")
+    try:
+        await bot.send_message(user.id, f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.")
+    except Exception:
+        pass
+
+
+@router.message(Command("rejectpay"))
+async def reject_payment_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await m.answer("Usage: /rejectpay PAYMENT_ID")
+        return
+    payment = await session.get(ManualPayment, int(arg))
+    if not payment or payment.status != "pending":
+        await m.answer("Pending payment not found.")
+        return
+    payment.status = "rejected"
+    payment.verified_by = m.from_user.id
+    payment.verified_at = utcnow()
+    await audit(session, m.from_user.id, "manual_payment_rejected", payment.user_id, f"payment_id={payment.id}")
+    await m.answer(f"Payment #{payment.id} rejected; no Premium granted.")
+
+
+@router.message(Command("revenue"))
+async def revenue_cmd(m: Message, session: AsyncSession):
+    stars = await session.scalar(select(func.coalesce(func.sum(__import__("app.db", fromlist=["Payment"]).Payment.amount), 0)).where(__import__("app.db", fromlist=["Payment"]).Payment.refunded.is_(False))) or 0
+    pending = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
+    verified = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "verified")) or 0
+    await m.answer(f"<b>Revenue overview</b>\nUnrefunded Telegram Stars: {stars} ⭐\nManual payments verified: {verified}\nManual payments pending: {pending}\nManual payment amounts are stored by currency and are not combined into a misleading total.")
+
+
+@router.message(Command("giveaway"))
+async def giveaway_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    """Usage: /giveaway TITLE | DAYS | WINNERS"""
+    parts = [x.strip() for x in (command.args or "").split("|")]
+    if len(parts) != 3 or not parts[0] or not parts[1].isdigit() or not parts[2].isdigit():
+        await m.answer("Usage: /giveaway Title | PREMIUM_DAYS | WINNERS")
+        return
+    days, winners = int(parts[1]), int(parts[2])
+    if not 1 <= days <= 3650 or not 1 <= winners <= 100:
+        await m.answer("Days must be 1–3650 and winners 1–100.")
+        return
+    g = Giveaway(created_by=m.from_user.id, title=parts[0][:200], premium_days=days, winner_count=winners)
+    session.add(g)
+    await session.flush()
+    await audit(session, m.from_user.id, "giveaway_created", None, f"giveaway_id={g.id}; days={days}; winners={winners}")
+    await m.answer(f"Giveaway #{g.id} created. Users can join with /join {g.id}; draw winners with /draw {g.id}.")
+
+
+@router.message(Command("join"))
+async def join_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await m.answer("Usage: /join GIVEAWAY_ID")
+        return
+    giveaway = await session.get(Giveaway, int(arg))
+    if not giveaway or giveaway.status != "open":
+        await m.answer("That giveaway is not open.")
+        return
+    user = await session.get(User, m.from_user.id)
+    if not user:
+        await m.answer("Use /start first.")
+        return
+    existing = await session.scalar(select(GiveawayEntry.id).where(GiveawayEntry.giveaway_id == giveaway.id, GiveawayEntry.user_id == user.id))
+    if existing:
+        await m.answer("You're already entered.")
+        return
+    session.add(GiveawayEntry(giveaway_id=giveaway.id, user_id=user.id))
+    await m.answer(f"Entered giveaway #{giveaway.id}: {giveaway.title}")
+
+
+@router.message(Command("draw"))
+async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSession, bot: Bot):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await m.answer("Usage: /draw GIVEAWAY_ID")
+        return
+    giveaway = await session.get(Giveaway, int(arg))
+    if not giveaway or giveaway.status != "open":
+        await m.answer("Open giveaway not found.")
+        return
+    entries = list((await session.scalars(select(GiveawayEntry).where(GiveawayEntry.giveaway_id == giveaway.id))).all())
+    if not entries:
+        await m.answer("No entries yet; giveaway remains open.")
+        return
+    winners = random.SystemRandom().sample(entries, min(giveaway.winner_count, len(entries)))
+    giveaway.status = "drawn"
+    giveaway.drawn_at = utcnow()
+    winner_ids = []
+    for entry in winners:
+        user = await session.get(User, entry.user_id)
+        if not user:
+            continue
+        user.premium_until = premium_base(user) + timedelta(days=giveaway.premium_days)
+        winner_ids.append(user.id)
+        session.add(PremiumGrant(user_id=user.id, granted_by=m.from_user.id, days=giveaway.premium_days, reason=f"giveaway #{giveaway.id}"))
+        try:
+            await bot.send_message(user.id, f"You won giveaway: {giveaway.title}! {giveaway.premium_days} Premium days have been granted.")
+        except Exception:
+            pass
+    await audit(session, m.from_user.id, "giveaway_drawn", None, f"giveaway_id={giveaway.id}; winners={winner_ids}")
+    await m.answer(f"Giveaway #{giveaway.id} drawn. Winners: {', '.join(map(str, winner_ids)) or 'none'}")
+
+
+@router.message(Command("broadcast"))
+async def broadcast_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    text = (command.args or "").strip()
+    if not text:
+        await m.answer("Usage: /broadcast your announcement text\nThis creates a preview; confirm it with the button before sending.")
+        return
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
+        InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
+    ]])
+    await m.answer(f"<b>Broadcast preview</b>\n\n{text[:3500]}\n\nConfirm to send to all registered users.", reply_markup=markup)
+
+
+@router.callback_query(F.data == "admin:broadcast:cancel")
+async def cancel_broadcast(cb: CallbackQuery):
+    if cb.from_user.id not in settings.admin_id_set:
+        await cb.answer("Not authorized.", show_alert=True)
+        return
+    if cb.message:
+        await cb.message.edit_text("Broadcast cancelled.")
+    await cb.answer()
