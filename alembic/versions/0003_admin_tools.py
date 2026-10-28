@@ -63,6 +63,17 @@ def upgrade() -> None:
     op.create_index("ix_giveaway_entries_giveaway_id", "giveaway_entries", ["giveaway_id"])
     op.create_index("ix_giveaway_entries_user_id", "giveaway_entries", ["user_id"])
     op.create_table(
+        "giveaway_winners",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("giveaway_id", sa.Integer(), sa.ForeignKey("giveaways.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("premium_days", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.UniqueConstraint("giveaway_id", "user_id", name="uq_giveaway_winner_user"),
+    )
+    op.create_index("ix_giveaway_winners_giveaway_id", "giveaway_winners", ["giveaway_id"])
+    op.create_index("ix_giveaway_winners_user_id", "giveaway_winners", ["user_id"])
+    op.create_table(
         "admin_audit",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("admin_id", sa.BigInteger(), nullable=False),
@@ -76,6 +87,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("admin_audit")
+    op.drop_table("giveaway_winners")
     op.drop_table("giveaway_entries")
     op.drop_table("giveaways")
     op.drop_table("manual_payments")
