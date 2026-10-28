@@ -3,6 +3,7 @@ from datetime import timedelta
 from urllib.parse import quote
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
     CallbackQuery,
@@ -61,28 +62,55 @@ def nav_keyboard(user_id: int, show_back: bool = True) -> InlineKeyboardMarkup:
     )
 
 
-async def get_user(session: AsyncSession, tg_user, start_args: str | None = None) -> User:
+async def get_user(
+    session: AsyncSession, tg_user, start_args: str | None = None
+) -> User:
     u = await session.get(User, tg_user.id)
+
     if u is None:
         ref_id = parse_referral(start_args, tg_user.id)
+
         if ref_id:
             referrer = await session.get(User, ref_id)
-            if referrer:
-                referrer.referrals_count = (referrer.referrals_count or 0) + 1
-            else:
+            if not referrer:
                 ref_id = None
-        u = User(
-            id=tg_user.id,
-            username=tg_user.username,
-            referred_by=ref_id,
-            affiliation_shares=0,
-            referrals_count=0,
+
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from sqlalchemy import update
+
+        stmt = (
+            pg_insert(User)
+            .values(
+                id=tg_user.id,
+                username=tg_user.username,
+                referred_by=ref_id,
+                affiliation_shares=0,
+                referrals_count=0,
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
+            .returning(User.id)
         )
-        session.add(u)
-        await session.flush()
-    else:
-        u.blocked = False
-        u.username = tg_user.username
+        inserted_id = await session.scalar(stmt)
+
+        if inserted_id is not None and ref_id is not None:
+            await session.execute(
+                update(User)
+                .where(User.id == ref_id)
+                .values(
+                    referrals_count=func.coalesce(
+                        User.referrals_count, 0
+                    ) + 1
+                )
+            )
+
+        u = await session.get(User, tg_user.id)
+
+    if u is None:
+        raise RuntimeError("Could not load or create Telegram user")
+
+    u.blocked = False
+    u.username = tg_user.username
+    await session.flush()
     return u
 
 
@@ -108,7 +136,13 @@ async def cmd_help(m: Message, session: AsyncSession):
 async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     u = await get_user(session, cb.from_user)
     if cb.message:
-        await cb.message.edit_text(HELP, reply_markup=nav_keyboard(u.id, show_back=False))
+        try:
+            await cb.message.edit_text(
+                HELP, reply_markup=nav_keyboard(u.id, show_back=False)
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
     await cb.answer()
 
 
