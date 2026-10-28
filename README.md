@@ -1,6 +1,6 @@
 # Crypto Alert Bot (Telegram)
 
-Production-ready price & Ethereum gas alert bot with a Telegram Stars paywall.
+Telegram bot for crypto price and Ethereum gas alerts with a Telegram Stars Premium tier.
 
 **Stack:** aiogram 3 · PostgreSQL 16 (SQLAlchemy 2 async + Alembic) · Redis 7 · Docker Compose · Prometheus metrics · health check · admin kill switch.
 
