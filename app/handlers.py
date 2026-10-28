@@ -460,15 +460,27 @@ async def paid(m: Message, session: AsyncSession):
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     sp = m.successful_payment
+    u = await get_user(session, m.from_user)
     if (
         sp.invoice_payload != f"premium:{settings.premium_days}"
         or sp.currency != "XTR"
         or sp.total_amount != settings.premium_price_stars
     ):
-        await m.answer(f"Payment received but could not be matched to the current Premium offer. Contact {settings.support_contact} with this payment.")
+        inserted = await session.scalar(
+            pg_insert(Payment)
+            .values(
+                user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount,
+                entitlement_tracked=False,
+            )
+            .on_conflict_do_nothing(index_elements=["charge_id"])
+            .returning(Payment.id)
+        )
+        if inserted is None:
+            await m.answer("This payment was already recorded; no duplicate action was taken.")
+        else:
+            await m.answer(f"Payment recorded but could not be matched to the current Premium offer. No Premium was added. Contact {settings.support_contact} with this payment.")
         return
     days = settings.premium_days
-    u = await get_user(session, m.from_user)
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     expiry = base + timedelta(days=days)
     inserted = await session.scalar(
