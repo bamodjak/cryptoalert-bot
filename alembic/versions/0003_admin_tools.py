@@ -10,6 +10,10 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("users", sa.Column("suspended", sa.Boolean(), server_default=sa.false(), nullable=False))
+    op.add_column("payments", sa.Column("premium_days", sa.Integer(), nullable=True))
+    op.add_column("payments", sa.Column("entitlement_start", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("payments", sa.Column("entitlement_end", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("payments", sa.Column("entitlement_tracked", sa.Boolean(), server_default=sa.false(), nullable=False))
     op.create_table(
         "premium_grants",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -76,4 +80,8 @@ def downgrade() -> None:
     op.drop_table("giveaways")
     op.drop_table("manual_payments")
     op.drop_table("premium_grants")
+    op.drop_column("payments", "entitlement_tracked")
+    op.drop_column("payments", "entitlement_end")
+    op.drop_column("payments", "entitlement_start")
+    op.drop_column("payments", "premium_days")
     op.drop_column("users", "suspended")
