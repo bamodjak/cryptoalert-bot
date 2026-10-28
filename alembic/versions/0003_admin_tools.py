@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("recorded_by", sa.BigInteger(), nullable=False),
         sa.Column("method", sa.String(32), nullable=False),
-        sa.Column("amount", sa.String(32), nullable=False),
+        sa.Column("amount", sa.Numeric(18, 2), nullable=False),
         sa.Column("currency", sa.String(12), nullable=False),
         sa.Column("reference", sa.String(128), unique=True),
         sa.Column("status", sa.String(16), server_default="pending", nullable=False),
