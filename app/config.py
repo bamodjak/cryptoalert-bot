@@ -1,7 +1,7 @@
 from functools import cached_property
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
-    coingecko_api_key: str = ""  # optional free "demo" key
+    coingecko_api_key: str = ""  # optional free "demo" key raises rate limits
     eth_rpc_url: str = "https://ethereum-rpc.publicnode.com"
 
     check_interval: int = 60
@@ -57,6 +57,20 @@ class Settings(BaseSettings):
     @classmethod
     def _clean_db_url(cls, v: str) -> str:
         return normalize_asyncpg_url(v)
+
+    @model_validator(mode="after")
+    def _default_owner_to_first_admin(self):
+        # Keep existing deployments compatible: if OWNER_ID is unset, the first
+        # configured ADMIN_IDS entry is the owner as requested in the deployment setup.
+        if self.owner_id <= 0:
+            admin_ids = [
+                int(value)
+                for value in self.admin_ids.replace(" ", "").split(",")
+                if value.isdigit() and int(value) > 0
+            ]
+            if admin_ids:
+                self.owner_id = admin_ids[0]
+        return self
 
     @cached_property
     def admin_id_set(self) -> frozenset[int]:
