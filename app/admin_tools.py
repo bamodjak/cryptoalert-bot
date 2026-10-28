@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import Numeric, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
@@ -134,7 +134,7 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
         await m.answer("That payment reference is already recorded.")
         return
     payment = ManualPayment(
-        user_id=user_id, recorded_by=m.from_user.id, method=method, amount=amount,
+        user_id=user_id, recorded_by=m.from_user.id, method=method, amount=amount_value,
         currency=currency, premium_days=days, reference=reference, status="pending"
     )
     session.add(payment)
@@ -193,7 +193,7 @@ async def revenue_cmd(m: Message, session: AsyncSession):
     pending = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
     verified = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "verified")) or 0
     totals = (await session.execute(
-        select(ManualPayment.currency, func.sum(cast(ManualPayment.amount, Numeric(18, 2))))
+        select(ManualPayment.currency, func.sum(ManualPayment.amount))
         .where(ManualPayment.status == "verified")
         .group_by(ManualPayment.currency)
         .order_by(ManualPayment.currency)
@@ -324,7 +324,7 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot):
     failed = 0
     for uid in ids:
         try:
-            await bot.send_message(uid, announcement)
+            await bot.send_message(uid, announcement, parse_mode=None)
             sent += 1
         except Exception:
             failed += 1
