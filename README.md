@@ -28,7 +28,7 @@ Admin commands:
 - `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
 - `/broadcast announcement text` — preview and explicitly confirm before sending
 
-Before enabling this feature on an existing database, back it up and run `alembic upgrade head` once with the new code. The CI workflow checks Python compilation, offline migration generation, and unit tests; it does not test against your live database or Telegram. Keep this branch unmerged until staging checks pass. Refund entitlement accounting remains a known deployment blocker: refunded Stars are recorded, but Premium time is not recalculated per charge.
+Before enabling this feature on an existing database, back it up and run `alembic upgrade head` once with the new code. The CI workflow checks Python compilation, offline migration generation, and unit tests; it does not test against your live database or Telegram. Keep this branch unmerged until staging checks pass. New Stars purchases record their Premium entitlement interval so refunds can reduce the unused portion without blindly deleting unrelated Premium time. Legacy payments created before this migration lack per-charge intervals; their Premium expiry is deliberately left unchanged on refund and the bot reports that limitation.
 
 ## 1. Create the bot
 1. In Telegram, open @BotFather → `/newbot` → copy the token.
