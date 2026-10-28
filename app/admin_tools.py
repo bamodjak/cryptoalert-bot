@@ -290,16 +290,23 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
 
 
 @router.message(Command("broadcast"))
-async def broadcast_cmd(m: Message, command: CommandObject, session: AsyncSession):
+async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis):
     text = (command.args or "").strip()
     if not text:
-        await m.answer("Usage: /broadcast your announcement text\nThis creates a preview; confirm it with the button before sending.")
+        await m.answer("Usage: /broadcast your announcement text\\nThis creates a preview; confirm it with the button before sending.")
         return
+    announcement = text[:600]
     markup = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
         InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
     ]])
-    await m.answer(f"<b>Broadcast preview</b>\n\n{html.escape(text[:3500])}\n\nConfirm to send to all registered users.", reply_markup=markup)
+    preview_message = await m.answer(
+        f"<b>Broadcast preview</b>\\n\\n{html.escape(announcement, quote=True)}\\n\\n"
+        "Confirm to send to all registered users. Preview is limited to 600 characters.",
+        reply_markup=markup,
+    )
+    payload_key = f"admin:broadcast:payload:{preview_message.chat.id}:{preview_message.message_id}"
+    await redis.set(payload_key, announcement, ex=3600)
 
 
 @router.callback_query(F.data == "admin:broadcast:cancel")
@@ -320,17 +327,15 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     if not cb.message or not cb.message.text:
         await cb.answer("Broadcast preview unavailable.", show_alert=True)
         return
-    preview = cb.message.text
-    prefix = "<b>Broadcast preview</b>\n\n"
-    suffix = "\n\nConfirm to send to all registered users."
-    if not preview.startswith(prefix) or suffix not in preview:
+    if not cb.message.text.startswith("<b>Broadcast preview</b>\\n\\n"):
         await cb.answer("Invalid or expired preview.", show_alert=True)
         return
-    announcement = preview[len(prefix):].split(suffix, 1)[0]
-    if not announcement.strip():
-        await cb.answer("Empty announcement.", show_alert=True)
+    payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
+    announcement = await redis.get(payload_key)
+    if not announcement:
+        await cb.answer("Broadcast preview expired or already processed.", show_alert=True)
         return
-    lock_key = f"admin:broadcast:{cb.message.chat.id}:{cb.message.message_id}"
+    lock_key = f"admin:broadcast:lock:{cb.message.chat.id}:{cb.message.message_id}"
     claimed = await redis.set(lock_key, str(cb.from_user.id), nx=True, ex=3600)
     if not claimed:
         await cb.answer("This broadcast has already been processed.", show_alert=True)
@@ -345,5 +350,6 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         except Exception:
             failed += 1
     await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
+    await redis.delete(payload_key)
     await cb.message.edit_text(f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
     await cb.answer()
