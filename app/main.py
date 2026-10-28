@@ -99,7 +99,7 @@ async def main() -> None:
     dp.update.outer_middleware(KillSwitchMiddleware(redis))
     dp.update.middleware(DbSessionMiddleware())
     dp.message.middleware(ThrottleMiddleware(redis))
-    dp.include_routers(admin, admin_tools_router, giveaway_public_router, router)
+    dp.include_routers(admin_tools_router, admin, giveaway_public_router, router)
 
     await bot.set_my_commands(COMMANDS)
 
