@@ -14,6 +14,22 @@ Production-ready price & Ethereum gas alert bot with a Telegram Stars paywall.
 - Prices from CoinGecko (cached in Redis, batched 100 coins per call)
 - `GET /health` (DB + Redis + worker freshness) and `GET /metrics` (Prometheus)
 
+## Admin tools (feature branch)
+
+Set `OWNER_ID` to the owner's numeric Telegram user ID. Keep `ADMIN_IDS` limited to trusted numeric user IDs. The owner receives Premium without payment; other admins do not automatically receive it.
+
+Admin commands:
+- `/users [ID or username]` — find users
+- `/grant USER_ID DAYS [reason]` — grant Premium and record the grant
+- `/suspend USER_ID [reason]` / `/unsuspend USER_ID` — reversible access control with audit history
+- `/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]` — record a pending payment (cash, in-person cash, Stars, BaridiMob, CCP, or bank transfer)
+- `/verify PAYMENT_ID` / `/rejectpay PAYMENT_ID` — verify or reject pending manual payments
+- `/revenue` — show unrefunded Stars and verified manual totals by currency
+- `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
+- `/broadcast announcement text` — preview and explicitly confirm before sending
+
+Before enabling this feature on an existing database, back it up and run `alembic upgrade head` once with the new code. The CI workflow checks Python compilation, offline migration generation, and unit tests; it does not test against your live database or Telegram. Keep this branch unmerged until staging checks pass. Refund entitlement accounting remains a known deployment blocker: refunded Stars are recorded, but Premium time is not recalculated per charge.
+
 ## 1. Create the bot
 1. In Telegram, open @BotFather → `/newbot` → copy the token.
 2. Get your own user id from @userinfobot (this is `ADMIN_IDS`).
