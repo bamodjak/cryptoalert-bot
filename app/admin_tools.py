@@ -249,7 +249,7 @@ async def join_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
         await m.answer("You're already entered.")
         return
     session.add(GiveawayEntry(giveaway_id=giveaway.id, user_id=user.id))
-    await m.answer(f"Entered giveaway #{giveaway.id}: {giveaway.title}")
+    await m.answer(f"Entered giveaway #{giveaway.id}: {html.escape(giveaway.title)}")
 
 
 @router.message(Command("draw"))
@@ -282,7 +282,7 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
         winner_ids.append(user.id)
         session.add(PremiumGrant(user_id=user.id, granted_by=m.from_user.id, days=giveaway.premium_days, reason=f"giveaway #{giveaway.id}"))
         try:
-            await bot.send_message(user.id, f"You won giveaway: {giveaway.title}! {giveaway.premium_days} Premium days have been granted.")
+            await bot.send_message(user.id, f"You won giveaway: {html.escape(giveaway.title)}! {giveaway.premium_days} Premium days have been granted.")
         except Exception:
             pass
     await audit(session, m.from_user.id, "giveaway_drawn", None, f"giveaway_id={giveaway.id}; winners={winner_ids}")
