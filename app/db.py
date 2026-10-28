@@ -113,6 +113,16 @@ class GiveawayEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class GiveawayWinner(Base):
+    __tablename__ = "giveaway_winners"
+    __table_args__ = (UniqueConstraint("giveaway_id", "user_id", name="uq_giveaway_winner_user"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    giveaway_id: Mapped[int] = mapped_column(Integer, ForeignKey("giveaways.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    premium_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AdminAudit(Base):
     __tablename__ = "admin_audit"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
