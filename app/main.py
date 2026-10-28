@@ -58,7 +58,7 @@ def build_web_app(redis: Redis) -> web.Application:
     async def stats_json(_: web.Request) -> web.Response:
         async with Session() as s:
             users = await s.scalar(select(func.count()).select_from(User)) or 0
-            premium = await s.scalar(select(func.count()).select_from(User).where(User.premium_until > utcnow())) or 0
+            premium = await s.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
             alerts = await s.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
             stars = await s.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
             shared = await s.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
