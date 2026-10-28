@@ -255,7 +255,11 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
     if not giveaway or giveaway.status != "open":
         await m.answer("Open giveaway not found.")
         return
-    entries = list((await session.scalars(select(GiveawayEntry).where(GiveawayEntry.giveaway_id == giveaway.id))).all())
+    entries = list((await session.scalars(
+        select(GiveawayEntry)
+        .join(User, User.id == GiveawayEntry.user_id)
+        .where(GiveawayEntry.giveaway_id == giveaway.id, User.suspended.is_(False))
+    )).all())
     if not entries:
         await m.answer("No entries yet; giveaway remains open.")
         return
