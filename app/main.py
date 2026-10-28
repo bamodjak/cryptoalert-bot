@@ -19,6 +19,7 @@ from . import worker
 from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
+from .admin_tools import router as admin_tools_router
 from .middlewares import KILL_KEY, DbSessionMiddleware, KillSwitchMiddleware, ThrottleMiddleware
 from .prices import PriceService
 
@@ -98,7 +99,7 @@ async def main() -> None:
     dp.update.outer_middleware(KillSwitchMiddleware(redis))
     dp.update.middleware(DbSessionMiddleware())
     dp.message.middleware(ThrottleMiddleware(redis))
-    dp.include_routers(admin, router)
+    dp.include_routers(admin, admin_tools_router, router)
 
     await bot.set_my_commands(COMMANDS)
 
