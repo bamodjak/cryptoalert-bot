@@ -364,6 +364,12 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     if not claimed:
         await cb.answer("This broadcast has already been processed.", show_alert=True)
         return
+    global_lock_key = "admin:broadcast:global"
+    global_claimed = await redis.set(global_lock_key, lock_key, nx=True, ex=3600)
+    if not global_claimed:
+        await redis.delete(lock_key)
+        await cb.answer("Another broadcast is already running.", show_alert=True)
+        return
     await cb.answer("Broadcast started.")
     ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
     sent = 0
@@ -384,4 +390,6 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         await asyncio.sleep(0.04)
     await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
     await redis.delete(payload_key)
+    if await redis.get(global_lock_key) == lock_key:
+        await redis.delete(global_lock_key)
     await cb.message.edit_text(f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
