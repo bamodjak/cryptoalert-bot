@@ -498,7 +498,7 @@ async def cmd_resume(m: Message, redis: Redis):
 @admin.message(Command("stats"))
 async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
     users = await session.scalar(select(func.count()).select_from(User)) or 0
-    premium = await session.scalar(select(func.count()).select_from(User).where(User.premium_until > utcnow())) or 0
+    premium = await session.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
     alerts = await session.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
     stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
     shared = await session.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
