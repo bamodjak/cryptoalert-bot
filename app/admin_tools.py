@@ -11,6 +11,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from redis.asyncio import Redis
@@ -370,6 +371,13 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         try:
             await bot.send_message(uid, announcement, parse_mode=None)
             sent += 1
+        except TelegramRetryAfter as exc:
+            await asyncio.sleep(exc.retry_after)
+            try:
+                await bot.send_message(uid, announcement, parse_mode=None)
+                sent += 1
+            except Exception:
+                failed += 1
         except Exception:
             failed += 1
         await asyncio.sleep(0.04)
