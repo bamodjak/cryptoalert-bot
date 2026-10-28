@@ -414,6 +414,8 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
 @router.message(Command("premium"))
 async def cmd_premium(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
+    if u.id == settings.owner_id:
+        return await m.answer("Owner account: Premium is enabled for free.")
     if u.is_premium:
         await m.answer(f"Premium is active until {u.premium_until:%Y-%m-%d} UTC. Paying again adds {settings.premium_days} days.")
     await m.answer_invoice(
