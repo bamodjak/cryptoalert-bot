@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import (
-    AdminAudit, Giveaway, GiveawayEntry, ManualPayment, Payment, PremiumGrant, User, utcnow
+    AdminAudit, Giveaway, GiveawayEntry, GiveawayWinner, ManualPayment, Payment, PremiumGrant, User, utcnow
 )
 
 router = Router(name="admin_tools")
@@ -283,6 +283,7 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
             continue
         user.premium_until = premium_base(user) + timedelta(days=giveaway.premium_days)
         winner_ids.append(user.id)
+        session.add(GiveawayWinner(giveaway_id=giveaway.id, user_id=user.id, premium_days=giveaway.premium_days))
         session.add(PremiumGrant(user_id=user.id, granted_by=m.from_user.id, days=giveaway.premium_days, reason=f"giveaway #{giveaway.id}"))
         try:
             await bot.send_message(user.id, f"You won giveaway: {html.escape(giveaway.title)}! {giveaway.premium_days} Premium days have been granted.")
