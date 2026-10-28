@@ -132,6 +132,9 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     if method == "stars" and currency != "XTR":
         await m.answer("For Telegram Stars, use currency XTR.")
         return
+    if method == "stars" and amount_value != amount_value.to_integral_value():
+        await m.answer("Telegram Stars amounts must be whole numbers.")
+        return
     if method != "stars" and currency == "XTR":
         await m.answer("Use method 'stars' for Telegram Stars payments.")
         return
