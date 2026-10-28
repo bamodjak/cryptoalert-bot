@@ -5,8 +5,9 @@ Manual payment records do not activate Premium until an admin verifies them.
 """
 import random
 import html
+import re
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
@@ -116,12 +117,12 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     if method not in allowed or days < 1 or days > 3650:
         await m.answer("Unsupported method or invalid Premium duration.")
         return
-    try:
-        amount_value = Decimal(amount)
-    except InvalidOperation:
-        amount_value = Decimal("0")
-    if (not amount_value.is_finite() or amount_value <= 0 or amount_value.as_tuple().exponent < -2 or amount_value > Decimal("9999999999999999.99")):
-        await m.answer("Amount must be positive, fit the payment field, and use at most two decimal places.")
+    if not re.fullmatch(r"\\d+(?:\\.\\d{1,2})?", amount):
+        await m.answer("Amount must be a positive number with at most two decimal places.")
+        return
+    amount_value = Decimal(amount)
+    if amount_value <= 0 or amount_value > Decimal("9999999999999999.99"):
+        await m.answer("Amount must be positive and fit the payment field.")
         return
     if not currency.isalnum() or len(currency) > 12:
         await m.answer("Currency must be a short code such as DZD, EUR, or XTR.")
