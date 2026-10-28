@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     webhook_base_url: str = ""
     webhook_path: str = "/tg/webhook"
     webhook_secret: str = ""
+    metrics_token: SecretStr = SecretStr("")  # protect /metrics and /stats.json; disabled when unset
     host: str = "0.0.0.0"
     port: int = 8080
 
