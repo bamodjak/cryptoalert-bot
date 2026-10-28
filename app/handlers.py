@@ -444,7 +444,12 @@ async def cmd_premium(m: Message, session: AsyncSession):
 
 @router.pre_checkout_query()
 async def pre_checkout(q: PreCheckoutQuery):
-    if q.invoice_payload.startswith("premium:") and q.currency == "XTR":
+    valid_invoice = (
+        q.invoice_payload == f"premium:{settings.premium_days}"
+        and q.currency == "XTR"
+        and q.total_amount == settings.premium_price_stars
+    )
+    if valid_invoice:
         await q.answer(ok=True)
     else:
         await q.answer(ok=False, error_message="This invoice is no longer valid.")
@@ -452,16 +457,33 @@ async def pre_checkout(q: PreCheckoutQuery):
 
 @router.message(F.successful_payment)
 async def paid(m: Message, session: AsyncSession):
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     sp = m.successful_payment
-    days = int(sp.invoice_payload.split(":")[1])
+    if (
+        sp.invoice_payload != f"premium:{settings.premium_days}"
+        or sp.currency != "XTR"
+        or sp.total_amount != settings.premium_price_stars
+    ):
+        await m.answer(f"Payment received but could not be matched to the current Premium offer. Contact {settings.support_contact} with this payment.")
+        return
+    days = settings.premium_days
     u = await get_user(session, m.from_user)
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     expiry = base + timedelta(days=days)
+    inserted = await session.scalar(
+        pg_insert(Payment)
+        .values(
+            user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount,
+            premium_days=days, entitlement_start=base, entitlement_end=expiry, entitlement_tracked=True,
+        )
+        .on_conflict_do_nothing(index_elements=["charge_id"])
+        .returning(Payment.id)
+    )
+    if inserted is None:
+        await m.answer("This payment was already processed; Premium was not added twice.")
+        return
     u.premium_until = expiry
-    session.add(Payment(
-        user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount,
-        premium_days=days, entitlement_start=base, entitlement_end=expiry, entitlement_tracked=True,
-    ))
     metrics.PAYMENTS.inc()
     await m.answer(
         f"Thank you! Premium is active until {u.premium_until:%Y-%m-%d} UTC.",
