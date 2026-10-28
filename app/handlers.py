@@ -454,7 +454,7 @@ async def paid(m: Message, session: AsyncSession):
     sp = m.successful_payment
     days = int(sp.invoice_payload.split(":")[1])
     u = await get_user(session, m.from_user)
-    base = u.premium_until if u.is_premium else utcnow()
+    base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     u.premium_until = base + timedelta(days=days)
     session.add(Payment(user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount))
     metrics.PAYMENTS.inc()
