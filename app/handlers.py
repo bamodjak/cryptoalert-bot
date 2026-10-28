@@ -455,8 +455,12 @@ async def paid(m: Message, session: AsyncSession):
     days = int(sp.invoice_payload.split(":")[1])
     u = await get_user(session, m.from_user)
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
-    u.premium_until = base + timedelta(days=days)
-    session.add(Payment(user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount))
+    expiry = base + timedelta(days=days)
+    u.premium_until = expiry
+    session.add(Payment(
+        user_id=u.id, charge_id=sp.telegram_payment_charge_id, amount=sp.total_amount,
+        premium_days=days, entitlement_start=base, entitlement_end=expiry, entitlement_tracked=True,
+    ))
     metrics.PAYMENTS.inc()
     await m.answer(
         f"Thank you! Premium is active until {u.premium_until:%Y-%m-%d} UTC.",
@@ -519,10 +523,14 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
     p.refunded = True
     u = await session.get(User, p.user_id)
-    # Do not erase the user's entire Premium entitlement: this charge may overlap
-    # with other purchases or a manual grant. Per-charge entitlement accounting is
-    # not yet stored, so retain the existing expiry rather than revoke unrelated time.
-    await m.answer(
-        f"Refunded {p.amount} Stars to {p.user_id}. Existing Premium expiry was left unchanged "
-        "because entitlements are not yet tracked per charge."
-    )
+    if u and p.entitlement_tracked and p.entitlement_start and p.entitlement_end and u.premium_until:
+        now = utcnow()
+        upper = min(p.entitlement_end, u.premium_until)
+        lower = max(now, p.entitlement_start)
+        remaining = max(timedelta(0), upper - lower)
+        if remaining and u.premium_until > now:
+            u.premium_until = max(now, u.premium_until - remaining)
+        note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h for unused time."
+    else:
+        note = " Legacy charge had no entitlement ledger; Premium expiry was left unchanged."
+    await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")
