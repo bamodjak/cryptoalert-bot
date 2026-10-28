@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import metrics
 from .config import settings
 from .db import Alert, Payment, User, utcnow
+from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_referral
 from .prices import PriceError, PriceService
