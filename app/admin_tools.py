@@ -197,6 +197,7 @@ async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     user.premium_until = premium_base(user) + timedelta(days=payment.premium_days)
     session.add(PremiumGrant(user_id=user.id, granted_by=m.from_user.id, days=payment.premium_days, reason=f"manual payment #{payment.id}"))
     await audit(session, m.from_user.id, "manual_payment_verified", user.id, f"payment_id={payment.id}; method={payment.method}; amount={payment.amount} {payment.currency}")
+    await session.commit()
     await m.answer(f"Verified payment #{payment.id}; granted {payment.premium_days} Premium days to {user.id}.")
     try:
         await bot.send_message(user.id, f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.")
