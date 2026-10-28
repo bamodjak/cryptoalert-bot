@@ -38,4 +38,6 @@ jobs:
       - run: python -c "import app.main; import app.admin_tools; print('application imports ok')"
       - run: alembic upgrade head --sql > /tmp/migration.sql
       - run: alembic upgrade head
+      - run: alembic downgrade 0002
+      - run: alembic upgrade head
       - run: pytest -q
