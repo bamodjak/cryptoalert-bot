@@ -117,7 +117,7 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     if method not in allowed or days < 1 or days > 3650:
         await m.answer("Unsupported method or invalid Premium duration.")
         return
-    if not re.fullmatch(r"\\d+(?:\\.\\d{1,2})?", amount):
+    if not re.fullmatch(r"\d+(?:\.\d{1,2})?", amount):
         await m.answer("Amount must be a positive number with at most two decimal places.")
         return
     amount_value = Decimal(amount)
