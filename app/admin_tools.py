@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -306,7 +307,7 @@ async def cancel_broadcast(cb: CallbackQuery):
 
 
 @router.callback_query(F.data == "admin:broadcast:confirm")
-async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, redis: Redis):
     if cb.from_user.id not in settings.admin_id_set:
         await cb.answer("Not authorized.", show_alert=True)
         return
@@ -322,6 +323,11 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot):
     announcement = preview[len(prefix):].split(suffix, 1)[0]
     if not announcement.strip():
         await cb.answer("Empty announcement.", show_alert=True)
+        return
+    lock_key = f"admin:broadcast:{cb.message.chat.id}:{cb.message.message_id}"
+    claimed = await redis.set(lock_key, str(cb.from_user.id), nx=True, ex=3600)
+    if not claimed:
+        await cb.answer("This broadcast has already been processed.", show_alert=True)
         return
     ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
     sent = 0
