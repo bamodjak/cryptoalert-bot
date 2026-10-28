@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -101,6 +101,7 @@ class Giveaway(Base):
 
 class GiveawayEntry(Base):
     __tablename__ = "giveaway_entries"
+    __table_args__ = (UniqueConstraint("giveaway_id", "user_id", name="uq_giveaway_entry_user"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     giveaway_id: Mapped[int] = mapped_column(Integer, ForeignKey("giveaways.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
