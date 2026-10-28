@@ -129,6 +129,9 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     if method == "stars" and currency != "XTR":
         await m.answer("For Telegram Stars, use currency XTR.")
         return
+    if method != "stars" and currency == "XTR":
+        await m.answer("Use method 'stars' for Telegram Stars payments.")
+        return
     user = await session.get(User, user_id)
     if not user:
         await m.answer("User not found. They must start the bot first.")
