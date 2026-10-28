@@ -301,19 +301,23 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
     giveaway.status = "drawn"
     giveaway.drawn_at = utcnow()
     winner_ids = []
+    notifications = []
     for entry in winners:
         user = await session.get(User, entry.user_id)
         if not user:
             continue
         user.premium_until = premium_base(user) + timedelta(days=giveaway.premium_days)
         winner_ids.append(user.id)
+        notifications.append((user.id, html.escape(giveaway.title), giveaway.premium_days))
         session.add(GiveawayWinner(giveaway_id=giveaway.id, user_id=user.id, premium_days=giveaway.premium_days))
         session.add(PremiumGrant(user_id=user.id, granted_by=m.from_user.id, days=giveaway.premium_days, reason=f"giveaway #{giveaway.id}"))
+    await audit(session, m.from_user.id, "giveaway_drawn", None, f"giveaway_id={giveaway.id}; winners={winner_ids}")
+    await session.commit()
+    for user_id, title, days in notifications:
         try:
-            await bot.send_message(user.id, f"You won giveaway: {html.escape(giveaway.title)}! {giveaway.premium_days} Premium days have been granted.")
+            await bot.send_message(user_id, f"You won giveaway: {title}! {days} Premium days have been granted.")
         except Exception:
             pass
-    await audit(session, m.from_user.id, "giveaway_drawn", None, f"giveaway_id={giveaway.id}; winners={winner_ids}")
     await m.answer(f"Giveaway #{giveaway.id} drawn. Winners: {', '.join(map(str, winner_ids)) or 'none'}")
 
 
