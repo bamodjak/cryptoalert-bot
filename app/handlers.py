@@ -369,15 +369,15 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         ]
     elif action == "guide":
         text = (
-            "<b>🧭 Admin command guide</b>\\n\\n"
-            "<b>Users</b>\\n/users [ID or username]\\n/grant USER_ID DAYS [reason]\\n"
-            "/suspend USER_ID [reason]\\n/unsuspend USER_ID\\n\\n"
-            "<b>Manual payments</b>\\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\\n"
-            "Methods: cash, cash_person, baridimob, ccp, bank\\n/verify PAYMENT_ID\\n"
-            "/rejectpay PAYMENT_ID\\n/revenue\\n\\n"
-            "<b>Giveaways</b>\\n/giveaway TITLE | DAYS | WINNERS\\n/draw GIVEAWAY_ID\\n"
-            "Participants use /join GIVEAWAY_ID\\n\\n"
-            "<b>Broadcast</b>\\n/broadcast announcement text\\nPreview first, then confirm."
+            "<b>🧭 Admin command guide</b>\n\n"
+            "<b>Users</b>\n/users [ID or username]\n/grant USER_ID DAYS [reason]\n"
+            "/suspend USER_ID [reason]\n/unsuspend USER_ID\n\n"
+            "<b>Manual payments</b>\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\n"
+            "Methods: cash, cash_person, baridimob, ccp, bank\n/verify PAYMENT_ID\n"
+            "/rejectpay PAYMENT_ID\n/revenue\n\n"
+            "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
+            "Participants use /join GIVEAWAY_ID\n\n"
+            "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "stats":
