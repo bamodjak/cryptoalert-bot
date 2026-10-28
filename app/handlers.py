@@ -391,7 +391,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "users":
         text = (
-            "<b>👥 Users & Premium</b>\n/users [ID or username] — find users\n"
+            "<b>👥 Users &amp; Premium</b>\n/users [ID or username] — find users\n"
             "/grant USER_ID DAYS [reason] — grant free Premium\n"
             "/suspend USER_ID [reason] — suspend access\n/unsuspend USER_ID — restore access"
         )
