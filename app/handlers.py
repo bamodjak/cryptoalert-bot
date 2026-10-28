@@ -301,7 +301,8 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
 async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
     # Acknowledge Telegram callback queries before any database/network work; Telegram expires them quickly.
     try:
-        except TelegramBadRequest:
+        await cb.answer()
+    except TelegramBadRequest:
         # A stale callback cannot be acknowledged, but its handler can still return safely.
         pass
 
@@ -350,7 +351,6 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
-    await cb.answer()
 
 
 @admin.callback_query(F.data.startswith("admin:"))
