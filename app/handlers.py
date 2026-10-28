@@ -359,6 +359,10 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         text = "<b>🛡 Admin Panel</b>\nChoose an action:"
         rows = [
             [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="👥 User tools: /users /grant /suspend", callback_data="admin:refund")],
+            [InlineKeyboardButton(text="💳 Payments: /manualpay /verify /revenue", callback_data="admin:refund")],
+            [InlineKeyboardButton(text="🎁 Giveaways: /giveaway /draw", callback_data="admin:refund")],
+            [InlineKeyboardButton(text="📣 Broadcast: /broadcast", callback_data="admin:refund")],
             [
                 InlineKeyboardButton(text="⏸ Pause bot", callback_data="admin:pause"),
                 InlineKeyboardButton(text="▶️ Resume bot", callback_data="admin:resume"),
