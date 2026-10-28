@@ -4,6 +4,7 @@ All mutations are restricted to ADMIN_IDS/OWNER_ID and recorded in admin_audit.
 Manual payment records do not activate Premium until an admin verifies them.
 """
 import random
+import html
 from datetime import timedelta
 
 from aiogram import Bot, F, Router
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import (
-    AdminAudit, Giveaway, GiveawayEntry, ManualPayment, PremiumGrant, User, utcnow
+    AdminAudit, Giveaway, GiveawayEntry, ManualPayment, Payment, PremiumGrant, User, utcnow
 )
 
 router = Router(name="admin_tools")
@@ -182,7 +183,7 @@ async def reject_payment_cmd(m: Message, command: CommandObject, session: AsyncS
 
 @router.message(Command("revenue"))
 async def revenue_cmd(m: Message, session: AsyncSession):
-    stars = await session.scalar(select(func.coalesce(func.sum(__import__("app.db", fromlist=["Payment"]).Payment.amount), 0)).where(__import__("app.db", fromlist=["Payment"]).Payment.refunded.is_(False))) or 0
+    stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
     pending = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
     verified = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "verified")) or 0
     await m.answer(f"<b>Revenue overview</b>\nUnrefunded Telegram Stars: {stars} ⭐\nManual payments verified: {verified}\nManual payments pending: {pending}\nManual payment amounts are stored by currency and are not combined into a misleading total.")
@@ -271,7 +272,7 @@ async def broadcast_cmd(m: Message, command: CommandObject, session: AsyncSessio
         InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
         InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
     ]])
-    await m.answer(f"<b>Broadcast preview</b>\n\n{text[:3500]}\n\nConfirm to send to all registered users.", reply_markup=markup)
+    await m.answer(f"<b>Broadcast preview</b>\n\n{html.escape(text[:3500])}\n\nConfirm to send to all registered users.", reply_markup=markup)
 
 
 @router.callback_query(F.data == "admin:broadcast:cancel")
@@ -281,4 +282,36 @@ async def cancel_broadcast(cb: CallbackQuery):
         return
     if cb.message:
         await cb.message.edit_text("Broadcast cancelled.")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "admin:broadcast:confirm")
+async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+    if cb.from_user.id not in settings.admin_id_set:
+        await cb.answer("Not authorized.", show_alert=True)
+        return
+    if not cb.message or not cb.message.text:
+        await cb.answer("Broadcast preview unavailable.", show_alert=True)
+        return
+    preview = cb.message.text
+    prefix = "<b>Broadcast preview</b>\\n\\n"
+    suffix = "\\n\\nConfirm to send to all registered users."
+    if not preview.startswith(prefix) or suffix not in preview:
+        await cb.answer("Invalid or expired preview.", show_alert=True)
+        return
+    announcement = preview[len(prefix):].split(suffix, 1)[0]
+    if not announcement.strip():
+        await cb.answer("Empty announcement.", show_alert=True)
+        return
+    ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
+    sent = 0
+    failed = 0
+    for uid in ids:
+        try:
+            await bot.send_message(uid, announcement)
+            sent += 1
+        except Exception:
+            failed += 1
+    await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
+    await cb.message.edit_text(f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
     await cb.answer()
