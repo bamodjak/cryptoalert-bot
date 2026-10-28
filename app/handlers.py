@@ -360,7 +360,15 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         text = "<b>🛡 Admin Panel</b>\nChoose an action:"
         rows = [
             [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
-            [InlineKeyboardButton(text="🧭 Admin command guide", callback_data="admin:guide")],
+            [
+                InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
+                InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
+            ],
+            [
+                InlineKeyboardButton(text="🎁 Giveaways", callback_data="admin:giveaways"),
+                InlineKeyboardButton(text="📣 Broadcast", callback_data="admin:broadcasthelp"),
+            ],
+            [InlineKeyboardButton(text="🧭 Full command guide", callback_data="admin:guide")],
             [
                 InlineKeyboardButton(text="⏸ Pause bot", callback_data="admin:pause"),
                 InlineKeyboardButton(text="▶️ Resume bot", callback_data="admin:resume"),
@@ -379,6 +387,32 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
             "Participants use /join GIVEAWAY_ID\n\n"
             "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "users":
+        text = (
+            "<b>👥 Users & Premium</b>\\n/users [ID or username] — find users\\n"
+            "/grant USER_ID DAYS [reason] — grant free Premium\\n"
+            "/suspend USER_ID [reason] — suspend access\\n/unsuspend USER_ID — restore access"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "payments":
+        text = (
+            "<b>💳 Payments</b>\\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\\n"
+            "/pendingpay — list pending payments\\n/verify PAYMENT_ID — verify and grant Premium\\n"
+            "/rejectpay PAYMENT_ID — reject payment\\n/revenue — revenue by currency"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "giveaways":
+        text = (
+            "<b>🎁 Giveaways</b>\\n/giveaway TITLE | PREMIUM_DAYS | WINNERS\\n"
+            "Users join with /join GIVEAWAY_ID\\n/draw GIVEAWAY_ID — select and record winners"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "broadcasthelp":
+        text = (
+            "<b>📣 Broadcast</b>\\n/broadcast your announcement\\n"
+            "Review the preview, then confirm. Broadcasts go to registered, non-suspended users."
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "stats":
