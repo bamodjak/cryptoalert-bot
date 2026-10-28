@@ -5,6 +5,7 @@ Manual payment records do not activate Premium until an admin verifies them.
 """
 import random
 import html
+import asyncio
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -371,6 +372,7 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
             sent += 1
         except Exception:
             failed += 1
+        await asyncio.sleep(0.04)
     await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
     await redis.delete(payload_key)
     await cb.message.edit_text(f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
