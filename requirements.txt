@@ -1,0 +1,8 @@
+aiogram>=3.13,<4
+aiohttp>=3.9
+sqlalchemy[asyncio]>=2.0.30,<2.1
+asyncpg>=0.29
+alembic>=1.13
+redis>=5.0
+pydantic-settings>=2.3
+prometheus-client>=0.20

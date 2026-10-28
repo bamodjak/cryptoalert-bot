@@ -1,0 +1,6 @@
+{$DOMAIN} {
+    handle /tg/webhook {
+        reverse_proxy bot:8080
+    }
+    respond 404
+}
