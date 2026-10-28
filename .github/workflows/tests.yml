@@ -7,6 +7,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bot
+          POSTGRES_PASSWORD: bot
+          POSTGRES_DB: bot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bot -d bot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       BOT_TOKEN: "123456:ci-placeholder-token"
       DATABASE_URL: "postgresql+asyncpg://bot:bot@localhost:5432/bot"
@@ -22,4 +36,5 @@ jobs:
       - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q app alembic tests
       - run: alembic upgrade head --sql > /tmp/migration.sql
+      - run: alembic upgrade head
       - run: pytest -q
