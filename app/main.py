@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 import signal
 import time
 
@@ -50,17 +51,27 @@ def build_web_app(redis: Redis) -> web.Application:
             await redis.ping()
             async with Session() as s:
                 await s.execute(text("SELECT 1"))
-        except Exception as e:
-            return web.json_response({"ok": False, "error": str(e)}, status=503, headers=CORS_HEADERS)
+        except Exception:
+            log.exception("health check failed")
+            return web.json_response({"ok": False, "error": "dependency check failed"}, status=503, headers=CORS_HEADERS)
         stale = worker.last_success and time.time() - worker.last_success > settings.check_interval * 5
         if stale:
             return web.json_response({"ok": False, "error": "alert worker stale"}, status=503, headers=CORS_HEADERS)
         return web.json_response({"ok": True}, headers=CORS_HEADERS)
 
-    async def metrics_view(_: web.Request) -> web.Response:
+    def metrics_authorized(request: web.Request) -> bool:
+        token = settings.metrics_token.get_secret_value()
+        supplied = request.headers.get("Authorization", "")
+        return bool(token) and secrets.compare_digest(supplied, f"Bearer {token}")
+
+    async def metrics_view(request: web.Request) -> web.Response:
+        if not metrics_authorized(request):
+            return web.Response(status=404)
         return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST, **CORS_HEADERS})
 
-    async def stats_json(_: web.Request) -> web.Response:
+    async def stats_json(request: web.Request) -> web.Response:
+        if not metrics_authorized(request):
+            return web.Response(status=404)
         async with Session() as s:
             users = await s.scalar(select(func.count()).select_from(User)) or 0
             premium = await s.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
