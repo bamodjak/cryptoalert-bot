@@ -46,20 +46,38 @@ HELP = (
 
 
 def nav_keyboard(user_id: int, show_back: bool = True) -> InlineKeyboardMarkup:
-    ref_link = f"https://t.me/{settings.bot_username}?start=ref_{user_id}"
-    share_text = "Real-time Crypto Price & Ethereum Gas Alerts on Telegram!"
-    share_url = f"https://t.me/share/url?url={quote(ref_link)}&text={quote(share_text)}"
-    top_row = []
+    rows = [
+        [
+            InlineKeyboardButton(text="₿ BTC Price", callback_data="dash:price"),
+            InlineKeyboardButton(text="⛽ Ethereum Gas", callback_data="dash:gas"),
+        ],
+        [
+            InlineKeyboardButton(text="🔔 My Alerts", callback_data="dash:alerts"),
+            InlineKeyboardButton(text="⭐ Premium", callback_data="dash:premium"),
+        ],
+        [
+            InlineKeyboardButton(text="🔗 Referrals", callback_data="nav:share"),
+            InlineKeyboardButton(text="ℹ️ Help", callback_data="nav:home"),
+        ],
+    ]
+    if user_id in settings.admin_id_set:
+        rows.append([
+            InlineKeyboardButton(text="🛡 Admin Panel", callback_data="admin:panel")
+        ])
     if show_back:
-        top_row.append(InlineKeyboardButton(text="⬅️ Back", callback_data="nav:back"))
-    top_row.append(InlineKeyboardButton(text="🏠 Home", callback_data="nav:home"))
-    top_row.append(InlineKeyboardButton(text="🔗 Share Affiliation Link", callback_data="nav:share"))
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            top_row,
-            [InlineKeyboardButton(text="📤 Forward Referral Link", url=share_url)],
-        ]
+        rows.append([
+            InlineKeyboardButton(text="⬅️ Back", callback_data="nav:back"),
+            InlineKeyboardButton(text="🏠 Home", callback_data="nav:home"),
+        ])
+    ref_link = f"https://t.me/{settings.bot_username}?start=ref_{user_id}"
+    share_url = (
+        "https://t.me/share/url?url=" + quote(ref_link)
+        + "&text=" + quote("Real-time Crypto Price & Ethereum Gas Alerts!")
     )
+    rows.append([
+        InlineKeyboardButton(text="📤 Forward Referral Link", url=share_url)
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def get_user(
@@ -276,6 +294,120 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
         reply_markup=nav_keyboard(u.id),
     )
 
+
+
+@router.callback_query(F.data.startswith("dash:"))
+async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, cb.from_user)
+    action = (cb.data or "").split(":", 1)[1]
+
+    if not cb.message:
+        await cb.answer()
+        return
+
+    if action == "price":
+        try:
+            coin = await prices.resolve("btc")
+            px = (await prices.prices([coin.id])).get(coin.id) if coin else None
+            text = f"<b>{coin.symbol.upper()}</b>: {fmt_usd(px)}" if coin and px is not None else "BTC price is unavailable."
+        except PriceError:
+            text = "The price source is busy. Try again shortly."
+    elif action == "gas":
+        try:
+            text = f"Ethereum gas: <b>{fmt_gwei(await prices.gas_gwei())} gwei</b>"
+        except PriceError:
+            text = "The gas source is busy. Try again shortly."
+    elif action == "alerts":
+        rows = (await session.scalars(
+            select(Alert).where(Alert.user_id == u.id, Alert.active.is_(True)).order_by(Alert.id)
+        )).all()
+        if rows:
+            lines = []
+            for a in rows:
+                word = "above" if a.op == ">" else "below"
+                value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
+                lines.append(f"#{a.id} {a.symbol} {word} {value}")
+            text = "Your active alerts:\n" + "\n".join(lines)
+        else:
+            text = "You have no active alerts yet. Create one with /alert btc > 70000."
+    elif action == "premium":
+        text = (
+            f"⭐ Premium: {settings.premium_price_stars} Stars for {settings.premium_days} days.\n"
+            f"Includes up to {settings.premium_alert_limit} alerts and Ethereum gas alerts.\n"
+            "Use /premium to purchase through Telegram."
+        )
+    else:
+        await cb.answer("Unknown action.")
+        return
+
+    try:
+        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id))
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+    await cb.answer()
+
+
+@admin.callback_query(F.data.startswith("admin:"))
+async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis):
+    if cb.from_user.id not in settings.admin_id_set:
+        await cb.answer("Not authorized.", show_alert=True)
+        return
+
+    action = (cb.data or "").split(":", 1)[1]
+    if action == "panel":
+        text = "<b>🛡 Admin Panel</b>\nChoose an action:"
+        rows = [
+            [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+            [
+                InlineKeyboardButton(text="⏸ Pause bot", callback_data="admin:pause"),
+                InlineKeyboardButton(text="▶️ Resume bot", callback_data="admin:resume"),
+            ],
+            [InlineKeyboardButton(text="💸 Refund help", callback_data="admin:refund")],
+            [InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")],
+        ]
+    elif action == "stats":
+        users = await session.scalar(select(func.count()).select_from(User)) or 0
+        premium = await session.scalar(
+            select(func.count()).select_from(User).where(User.premium_until > utcnow())
+        ) or 0
+        alerts = await session.scalar(
+            select(func.count()).select_from(Alert).where(Alert.active.is_(True))
+        ) or 0
+        stars = await session.scalar(
+            select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))
+        ) or 0
+        killed = "ON" if await redis.exists(KILL_KEY) else "OFF"
+        text = (
+            f"<b>📊 Bot Statistics</b>\nUsers: {users}\nPremium: {premium}\n"
+            f"Active alerts: {alerts}\nStars earned: {stars}\nPause switch: {killed}"
+        )
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "pause":
+        await redis.set(KILL_KEY, "1")
+        text = "⏸ Pause switch enabled."
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "resume":
+        await redis.delete(KILL_KEY)
+        text = "▶️ Pause switch disabled."
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    elif action == "refund":
+        text = "💸 To refund a payment, use:\n/refund CHARGE_ID\n\nConfirm the charge ID from your payment records first."
+        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+    else:
+        await cb.answer("Unknown action.")
+        return
+
+    if cb.message:
+        try:
+            await cb.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
+    await cb.answer()
 
 # ---------- Payments (Telegram Stars) ----------
 
