@@ -168,7 +168,7 @@ async def pending_payments_cmd(m: Message, session: AsyncSession):
         f"#{p.id} · user {p.user_id} · {p.method} · {p.amount} {p.currency} · {p.premium_days}d · ref {html.escape(p.reference or '-')}"
         for p in rows
     ]
-    await m.answer("<b>Pending manual payments</b>\\n" + "\\n".join(lines))
+    await m.answer("<b>Pending manual payments</b>\n" + "\n".join(lines))
 
 
 @router.message(Command("verify"))
