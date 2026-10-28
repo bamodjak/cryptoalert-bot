@@ -360,12 +360,12 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         await cb.answer("Broadcast preview expired or already processed.", show_alert=True)
         return
     lock_key = f"admin:broadcast:lock:{cb.message.chat.id}:{cb.message.message_id}"
-    claimed = await redis.set(lock_key, str(cb.from_user.id), nx=True, ex=86400)
+    claimed = await redis.set(lock_key, str(cb.from_user.id), nx=True, ex=3600)
     if not claimed:
         await cb.answer("This broadcast has already been processed.", show_alert=True)
         return
     global_lock_key = "admin:broadcast:global"
-    global_claimed = await redis.set(global_lock_key, lock_key, nx=True, ex=86400)
+    global_claimed = await redis.set(global_lock_key, lock_key, nx=True, ex=3600)
     if not global_claimed:
         await redis.delete(lock_key)
         await cb.answer("Another broadcast is already running.", show_alert=True)
