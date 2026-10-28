@@ -19,6 +19,7 @@ from .db import (
 )
 
 router = Router(name="admin_tools")
+public_router = Router(name="giveaway_public")
 router.message.filter(F.from_user.id.in_(settings.admin_id_set))
 
 
@@ -207,7 +208,7 @@ async def giveaway_cmd(m: Message, command: CommandObject, session: AsyncSession
     await m.answer(f"Giveaway #{g.id} created. Users can join with /join {g.id}; draw winners with /draw {g.id}.")
 
 
-@router.message(Command("join"))
+@public_router.message(Command("join"))
 async def join_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSession):
     arg = (command.args or "").strip()
     if not arg.isdigit():
@@ -294,8 +295,8 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot):
         await cb.answer("Broadcast preview unavailable.", show_alert=True)
         return
     preview = cb.message.text
-    prefix = "<b>Broadcast preview</b>\\n\\n"
-    suffix = "\\n\\nConfirm to send to all registered users."
+    prefix = "<b>Broadcast preview</b>\n\n"
+    suffix = "\n\nConfirm to send to all registered users."
     if not preview.startswith(prefix) or suffix not in preview:
         await cb.answer("Invalid or expired preview.", show_alert=True)
         return
