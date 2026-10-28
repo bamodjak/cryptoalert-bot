@@ -375,7 +375,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "/suspend USER_ID [reason]\n/unsuspend USER_ID\n\n"
             "<b>Manual payments</b>\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\n"
             "Methods: cash, cash_person, stars, baridimob, ccp, bank\n/verify PAYMENT_ID\n"
-            "/rejectpay PAYMENT_ID\n/revenue\n\n"
+            "/rejectpay PAYMENT_ID\n/pendingpay — list pending manual payments\n/revenue\n\n"
             "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
             "Participants use /join GIVEAWAY_ID\n\n"
             "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
