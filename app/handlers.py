@@ -441,7 +441,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         text = "▶️ Pause switch disabled."
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "refund":
-        text = "💸 To refund a payment, use:\n/refund CHARGE_ID\n\nConfirm the charge ID from your payment records first."
+        text = "💸 To refund a payment, use:\n/refund CHARGE_ID\n\nLegacy/untracked payments require manual review and the explicit override:\n/refund CHARGE_ID ALLOW_LEGACY"
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     else:
         await cb.answer("Unknown action.")
