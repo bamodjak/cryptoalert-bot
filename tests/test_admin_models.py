@@ -1,0 +1,34 @@
+from app.db import AdminAudit, Giveaway, GiveawayEntry, ManualPayment, PremiumGrant, User
+from app.admin_tools import public_router, router
+
+
+def test_admin_models_registered():
+    assert "premium_grants" in User.metadata.tables
+    assert "manual_payments" in User.metadata.tables
+    assert "giveaways" in User.metadata.tables
+    assert "giveaway_entries" in User.metadata.tables
+    assert "admin_audit" in User.metadata.tables
+
+
+def test_suspension_field_is_non_nullable():
+    assert User.__table__.c.suspended.nullable is False
+
+
+def test_manual_payments_default_to_pending():
+    assert ManualPayment.__table__.c.status.default.arg == "pending"
+
+
+def test_giveaway_entry_is_unique_per_user():
+    constraints = [
+        constraint for constraint in GiveawayEntry.__table__.constraints
+        if getattr(constraint, "name", None) == "uq_giveaway_entry_user"
+    ]
+    assert len(constraints) == 1
+
+
+def test_public_giveaway_router_is_separate_from_admin_router():
+    public_commands = [handler for handler in public_router.message.handlers]
+    admin_commands = [handler for handler in router.message.handlers]
+    assert public_commands
+    assert all(handler.callback.__name__ == "join_giveaway_cmd" for handler in public_commands)
+    assert all(handler.callback.__name__ != "join_giveaway_cmd" for handler in admin_commands)
