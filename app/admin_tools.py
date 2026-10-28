@@ -375,6 +375,7 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         return
     await cb.answer("Broadcast started.")
     ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
+    await session.commit()  # release the DB connection before network sends
     sent = 0
     failed = 0
     for uid in ids:
