@@ -1,4 +1,4 @@
-from app.db import AdminAudit, Giveaway, GiveawayEntry, ManualPayment, Payment, PremiumGrant, User
+from app.db import AdminAudit, Giveaway, GiveawayEntry, GiveawayWinner, ManualPayment, Payment, PremiumGrant, User
 from app.admin_tools import public_router, router
 
 
@@ -7,6 +7,7 @@ def test_admin_models_registered():
     assert "manual_payments" in User.metadata.tables
     assert "giveaways" in User.metadata.tables
     assert "giveaway_entries" in User.metadata.tables
+    assert "giveaway_winners" in User.metadata.tables
     assert "admin_audit" in User.metadata.tables
 
 
@@ -101,3 +102,12 @@ def test_specific_admin_callbacks_are_registered_before_generic_admin_router():
     register_routers(dp)
     names = [router.name for router in dp.sub_routers]
     assert names.index("admin_tools") < names.index("admin")
+
+
+
+def test_giveaway_winners_are_unique_per_giveaway():
+    constraints = [
+        constraint for constraint in GiveawayWinner.__table__.constraints
+        if getattr(constraint, "name", None) == "uq_giveaway_winner_user"
+    ]
+    assert len(constraints) == 1
