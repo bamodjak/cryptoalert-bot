@@ -10,7 +10,7 @@ from datetime import timedelta
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import func, select
+from sqlalchemy import Numeric, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
@@ -107,10 +107,10 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     """Usage: /manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]"""
     parts = (command.args or "").split()
     if len(parts) < 5 or not parts[0].isdigit() or not parts[4].isdigit():
-        await m.answer("Usage: /manualpay USER_ID cash|baridimob|ccp|bank|cash_person AMOUNT CURRENCY DAYS [reference]")
+        await m.answer("Usage: /manualpay USER_ID cash|cash_person|stars|baridimob|ccp|bank AMOUNT CURRENCY DAYS [reference]")
         return
     user_id, method, amount, currency, days = int(parts[0]), parts[1].lower(), parts[2], parts[3].upper(), int(parts[4])
-    allowed = {"cash", "baridimob", "ccp", "bank", "cash_person"}
+    allowed = {"cash", "cash_person", "stars", "baridimob", "ccp", "bank"}
     if method not in allowed or days < 1 or days > 3650:
         await m.answer("Unsupported method or invalid Premium duration.")
         return
@@ -187,7 +187,17 @@ async def revenue_cmd(m: Message, session: AsyncSession):
     stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
     pending = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
     verified = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "verified")) or 0
-    await m.answer(f"<b>Revenue overview</b>\nUnrefunded Telegram Stars: {stars} ⭐\nManual payments verified: {verified}\nManual payments pending: {pending}\nManual payment amounts are stored by currency and are not combined into a misleading total.")
+    totals = (await session.execute(
+        select(ManualPayment.currency, func.sum(cast(ManualPayment.amount, Numeric(18, 2))))
+        .where(ManualPayment.status == "verified")
+        .group_by(ManualPayment.currency)
+        .order_by(ManualPayment.currency)
+    )).all()
+    amounts = "\\n".join(f"Verified {currency}: {amount}" for currency, amount in totals) or "Verified manual amounts: none"
+    await m.answer(
+        f"<b>Revenue overview</b>\\nUnrefunded Telegram Stars: {stars} ⭐\\n"
+        f"Manual payments verified: {verified}\\nManual payments pending: {pending}\\n{amounts}"
+    )
 
 
 @router.message(Command("giveaway"))
