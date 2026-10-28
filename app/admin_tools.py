@@ -80,8 +80,8 @@ async def set_suspension(m: Message, session: AsyncSession, suspended: bool, arg
         await m.answer("Usage: /suspend USER_ID [reason] or /unsuspend USER_ID")
         return
     user_id = int(parts[0])
-    if user_id == m.from_user.id or user_id == settings.owner_id:
-        await m.answer("You cannot suspend yourself or the configured owner.")
+    if user_id in settings.admin_id_set:
+        await m.answer("Administrator accounts cannot be suspended with this command.")
         return
     user = await session.get(User, user_id)
     if not user:
