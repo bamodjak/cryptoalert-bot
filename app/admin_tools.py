@@ -49,7 +49,7 @@ async def users_cmd(m: Message, command: CommandObject, session: AsyncSession):
         return
     lines = []
     for u in rows:
-        until = u.premium_until.strftime("%Y-%m-%d UTC") if u.premium_until else "not set"
+        until = "free (owner)" if u.id == settings.owner_id else (u.premium_until.strftime("%Y-%m-%d UTC") if u.premium_until else "not set")
         lines.append(f"{u.id} @{u.username or 'no-username'} · Premium until: {until} · suspended={u.suspended}")
     await m.answer("<b>Users</b>\n" + "\n".join(lines))
 
