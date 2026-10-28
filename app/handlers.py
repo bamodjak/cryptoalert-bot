@@ -369,7 +369,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
     elif action == "stats":
         users = await session.scalar(select(func.count()).select_from(User)) or 0
         premium = await session.scalar(
-            select(func.count()).select_from(User).where(User.premium_until > utcnow())
+            select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))
         ) or 0
         alerts = await session.scalar(
             select(func.count()).select_from(Alert).where(Alert.active.is_(True))
