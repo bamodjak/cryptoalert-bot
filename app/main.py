@@ -39,6 +39,11 @@ COMMANDS = [
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
 
 
+def register_routers(dp: Dispatcher) -> None:
+    # Specific admin-tools callbacks must precede the generic admin:* callback handler.
+    dp.include_routers(admin_tools_router, admin, giveaway_public_router, router)
+
+
 def build_web_app(redis: Redis) -> web.Application:
     async def health(_: web.Request) -> web.Response:
         try:
@@ -99,7 +104,7 @@ async def main() -> None:
     dp.update.outer_middleware(KillSwitchMiddleware(redis))
     dp.update.middleware(DbSessionMiddleware())
     dp.message.middleware(ThrottleMiddleware(redis))
-    dp.include_routers(admin_tools_router, admin, giveaway_public_router, router)
+    register_routers(dp)
 
     await bot.set_my_commands(COMMANDS)
 
