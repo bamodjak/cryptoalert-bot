@@ -518,7 +518,7 @@ async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
 @admin.message(Command("refund"))
 async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, bot: Bot):
     charge = (command.args or "").strip()
-    p = await session.scalar(select(Payment).where(Payment.charge_id == charge)) if charge else None
+    p = await session.scalar(select(Payment).where(Payment.charge_id == charge).with_for_update()) if charge else None
     if not p or p.refunded:
         return await m.answer("Usage: /refund <charge_id> (unrefunded payment)")
     await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
@@ -526,11 +526,25 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     u = await session.get(User, p.user_id)
     if u and p.entitlement_tracked and p.entitlement_start and p.entitlement_end and u.premium_until:
         now = utcnow()
-        upper = min(p.entitlement_end, u.premium_until)
-        lower = max(now, p.entitlement_start)
-        remaining = max(timedelta(0), upper - lower)
-        if remaining and u.premium_until > now:
+        remaining = refundable_unused_duration(
+            p.entitlement_start, p.entitlement_end, u.premium_until, now
+        )
+        if remaining:
             u.premium_until = max(now, u.premium_until - remaining)
+            future_payments = (await session.scalars(
+                select(Payment)
+                .where(
+                    Payment.user_id == p.user_id,
+                    Payment.id != p.id,
+                    Payment.refunded.is_(False),
+                    Payment.entitlement_tracked.is_(True),
+                    Payment.entitlement_start >= p.entitlement_end,
+                )
+                .with_for_update()
+            )).all()
+            for future_payment in future_payments:
+                future_payment.entitlement_start -= remaining
+                future_payment.entitlement_end -= remaining
         note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h for unused time."
     else:
         note = " Legacy charge had no entitlement ledger; Premium expiry was left unchanged."
