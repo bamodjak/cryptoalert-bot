@@ -67,3 +67,26 @@ def test_stars_payment_has_entitlement_tracking_fields():
     assert "entitlement_start" in columns
     assert "entitlement_end" in columns
     assert columns.entitlement_tracked.default.arg is False
+
+
+
+def test_refund_calculation_only_removes_unused_interval():
+    from datetime import datetime, timedelta, timezone
+    from app.entitlements import refundable_unused_duration
+
+    now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    expiry = datetime(2026, 3, 2, tzinfo=timezone.utc)
+    assert refundable_unused_duration(start, end, expiry, now) == timedelta(days=11)
+
+
+def test_refund_calculation_is_zero_for_expired_entitlement():
+    from datetime import datetime, timedelta, timezone
+    from app.entitlements import refundable_unused_duration
+
+    now = datetime(2026, 2, 5, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    expiry = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    assert refundable_unused_duration(start, end, expiry, now) == timedelta(0)
