@@ -585,10 +585,18 @@ async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
 
 @admin.message(Command("refund"))
 async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, bot: Bot):
-    charge = (command.args or "").strip()
+    parts = (command.args or "").split()
+    charge = parts[0] if parts else ""
+    allow_legacy = len(parts) > 1 and parts[1].upper() == "ALLOW_LEGACY"
     p = await session.scalar(select(Payment).where(Payment.charge_id == charge).with_for_update()) if charge else None
     if not p or p.refunded:
-        return await m.answer("Usage: /refund <charge_id> (unrefunded payment)")
+        return await m.answer("Usage: /refund CHARGE_ID (unrefunded payment)")
+    if not p.entitlement_tracked and not allow_legacy:
+        return await m.answer(
+            "This older/unmatched payment has no Premium entitlement record, so no refund was issued. "
+            "Review the account manually first. Explicit override: /refund CHARGE_ID ALLOW_LEGACY "
+            "(Premium expiry will remain unchanged)."
+        )
     await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
     p.refunded = True
     u = await session.get(User, p.user_id)
