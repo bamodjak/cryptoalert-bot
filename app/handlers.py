@@ -299,11 +299,16 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
 
 @router.callback_query(F.data.startswith("dash:"))
 async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    # Acknowledge Telegram callback queries before any database/network work; Telegram expires them quickly.
+    try:
+        except TelegramBadRequest:
+        # A stale callback cannot be acknowledged, but its handler can still return safely.
+        pass
+
     u = await get_user(session, cb.from_user)
     action = (cb.data or "").split(":", 1)[1]
 
     if not cb.message:
-        await cb.answer()
         return
 
     if action == "price":
@@ -338,7 +343,6 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
             "Use /premium to purchase through Telegram."
         )
     else:
-        await cb.answer("Unknown action.")
         return
 
     try:
