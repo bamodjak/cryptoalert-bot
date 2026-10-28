@@ -153,6 +153,24 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
 
 
+@router.message(Command("pendingpay"))
+async def pending_payments_cmd(m: Message, session: AsyncSession):
+    rows = (await session.scalars(
+        select(ManualPayment)
+        .where(ManualPayment.status == "pending")
+        .order_by(ManualPayment.created_at.asc())
+        .limit(50)
+    )).all()
+    if not rows:
+        await m.answer("No pending manual payments.")
+        return
+    lines = [
+        f"#{p.id} · user {p.user_id} · {p.method} · {p.amount} {p.currency} · {p.premium_days}d · ref {html.escape(p.reference or '-')}"
+        for p in rows
+    ]
+    await m.answer("<b>Pending manual payments</b>\\n" + "\\n".join(lines))
+
+
 @router.message(Command("verify"))
 async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncSession, bot: Bot):
     arg = (command.args or "").strip()
