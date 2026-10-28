@@ -310,11 +310,13 @@ async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis):
 
 
 @router.callback_query(F.data == "admin:broadcast:cancel")
-async def cancel_broadcast(cb: CallbackQuery):
+async def cancel_broadcast(cb: CallbackQuery, redis: Redis):
     if cb.from_user.id not in settings.admin_id_set:
         await cb.answer("Not authorized.", show_alert=True)
         return
     if cb.message:
+        payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
+        await redis.delete(payload_key)
         await cb.message.edit_text("Broadcast cancelled.")
     await cb.answer()
 
@@ -326,9 +328,6 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         return
     if not cb.message or not cb.message.text:
         await cb.answer("Broadcast preview unavailable.", show_alert=True)
-        return
-    if not cb.message.text.startswith("<b>Broadcast preview</b>\n\n"):
-        await cb.answer("Invalid or expired preview.", show_alert=True)
         return
     payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
     announcement = await redis.get(payload_key)
