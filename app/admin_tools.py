@@ -149,7 +149,7 @@ async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     if not arg.isdigit():
         await m.answer("Usage: /verify PAYMENT_ID")
         return
-    payment = await session.get(ManualPayment, int(arg))
+    payment = await session.scalar(select(ManualPayment).where(ManualPayment.id == int(arg)).with_for_update())
     if not payment or payment.status != "pending":
         await m.answer("Pending payment not found.")
         return
@@ -176,7 +176,7 @@ async def reject_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     if not arg.isdigit():
         await m.answer("Usage: /rejectpay PAYMENT_ID")
         return
-    payment = await session.get(ManualPayment, int(arg))
+    payment = await session.scalar(select(ManualPayment).where(ManualPayment.id == int(arg)).with_for_update())
     if not payment or payment.status != "pending":
         await m.answer("Pending payment not found.")
         return
@@ -229,7 +229,7 @@ async def join_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
     if not arg.isdigit():
         await m.answer("Usage: /join GIVEAWAY_ID")
         return
-    giveaway = await session.get(Giveaway, int(arg))
+    giveaway = await session.scalar(select(Giveaway).where(Giveaway.id == int(arg)).with_for_update())
     if not giveaway or giveaway.status != "open":
         await m.answer("That giveaway is not open.")
         return
@@ -251,7 +251,7 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
     if not arg.isdigit():
         await m.answer("Usage: /draw GIVEAWAY_ID")
         return
-    giveaway = await session.get(Giveaway, int(arg))
+    giveaway = await session.scalar(select(Giveaway).where(Giveaway.id == int(arg)).with_for_update())
     if not giveaway or giveaway.status != "open":
         await m.answer("Open giveaway not found.")
         return
