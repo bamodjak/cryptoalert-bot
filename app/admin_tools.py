@@ -120,8 +120,8 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
         amount_value = Decimal(amount)
     except InvalidOperation:
         amount_value = Decimal("0")
-    if not amount_value.is_finite() or amount_value <= 0 or amount_value.as_tuple().exponent < -2:
-        await m.answer("Amount must be positive and use at most two decimal places.")
+    if (not amount_value.is_finite() or amount_value <= 0 or amount_value.as_tuple().exponent < -2 or amount_value > Decimal("9999999999999999.99")):
+        await m.answer("Amount must be positive, fit the payment field, and use at most two decimal places.")
         return
     if not currency.isalnum() or len(currency) > 12:
         await m.answer("Currency must be a short code such as DZD, EUR, or XTR.")
