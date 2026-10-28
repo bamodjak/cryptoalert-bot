@@ -38,7 +38,11 @@ async def _send(bot: Bot, chat_id: int, text: str) -> bool | None:
 async def check_once(bot: Bot, prices: PriceService) -> None:
     global last_success
     async with Session() as s:
-        alerts = (await s.scalars(select(Alert).where(Alert.active.is_(True)))).all()
+        alerts = (await s.scalars(
+            select(Alert)
+            .join(User, User.id == Alert.user_id)
+            .where(Alert.active.is_(True), User.suspended.is_(False))
+        )).all()
     if not alerts:
         last_success = time.time()
         metrics.LAST_CHECK.set(last_success)
