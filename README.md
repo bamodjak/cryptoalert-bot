@@ -23,7 +23,7 @@ Admin commands:
 - `/grant USER_ID DAYS [reason]` — grant Premium and record the grant
 - `/suspend USER_ID [reason]` / `/unsuspend USER_ID` — reversible access control with audit history
 - `/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]` — record a pending payment (cash, in-person cash, Stars, BaridiMob, CCP, or bank transfer)
-- `/verify PAYMENT_ID` / `/rejectpay PAYMENT_ID` — verify or reject pending manual payments
+- `/pendingpay` — list pending manual payments; `/verify PAYMENT_ID` / `/rejectpay PAYMENT_ID` — verify or reject pending manual payments
 - `/revenue` — show unrefunded Stars and verified manual totals by currency
 - `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
 - `/broadcast announcement text` — preview and explicitly confirm before sending
