@@ -7,7 +7,7 @@ Production-ready price & Ethereum gas alert bot with a Telegram Stars paywall.
 ## Features
 - `/price btc`, `/alert btc > 70000`, `/alert eth below 2.5k`, `/alerts`, `/del 12`
 - `/gas` and `/gasalert 0.5` (Premium) via a public Ethereum RPC
-- Free tier: 3 alerts. Premium (Telegram Stars, default 250 ⭐ / 30 days): 50 alerts + gas alerts
+- Free tier: 30 alerts. Premium (Telegram Stars, default 1,500 ⭐ / 30 days): 500 alerts + gas alerts
 - `/paysupport` and `/terms` (Telegram requires these for Stars payments)
 - Admin: `/kill`, `/resume`, `/stats`, `/refund <charge_id>`
 - Anti-spam throttle (30 msgs/min/user), auto-cleanup when a user blocks the bot
