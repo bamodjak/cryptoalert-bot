@@ -293,7 +293,7 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
 async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis):
     text = (command.args or "").strip()
     if not text:
-        await m.answer("Usage: /broadcast your announcement text\\nThis creates a preview; confirm it with the button before sending.")
+        await m.answer("Usage: /broadcast your announcement text\nThis creates a preview; confirm it with the button before sending.")
         return
     announcement = text[:600]
     markup = InlineKeyboardMarkup(inline_keyboard=[[
@@ -301,7 +301,7 @@ async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis):
         InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
     ]])
     preview_message = await m.answer(
-        f"<b>Broadcast preview</b>\\n\\n{html.escape(announcement, quote=True)}\\n\\n"
+        f"<b>Broadcast preview</b>\n\n{html.escape(announcement, quote=True)}\n\n"
         "Confirm to send to all registered users. Preview is limited to 600 characters.",
         reply_markup=markup,
     )
@@ -327,7 +327,7 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     if not cb.message or not cb.message.text:
         await cb.answer("Broadcast preview unavailable.", show_alert=True)
         return
-    if not cb.message.text.startswith("<b>Broadcast preview</b>\\n\\n"):
+    if not cb.message.text.startswith("<b>Broadcast preview</b>\n\n"):
         await cb.answer("Invalid or expired preview.", show_alert=True)
         return
     payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
