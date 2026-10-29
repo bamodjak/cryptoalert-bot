@@ -396,9 +396,15 @@ async def edit_if_changed(message: Message, text: str, **kwargs) -> None:
             raise
 
 
+async def claim_create_action(redis: Redis, user_id: int, message_id: int, action: str) -> bool:
+    """Allow only the first alert-creation action from a given prompt message."""
+    key = f"bot:create-alert:once:{user_id}:{message_id}:{action}"
+    return bool(await redis.set(key, "1", ex=30, nx=True))
+
+
 @router.callback_query(F.data.startswith("create:"))
 async def cb_create_alert(
-    cb: CallbackQuery, session: AsyncSession, prices: PriceService, state: FSMContext
+    cb: CallbackQuery, session: AsyncSession, prices: PriceService, state: FSMContext, redis: Redis
 ):
     # Acknowledge immediately so Telegram's spinner never waits on a market-data API.
     await cb.answer()
@@ -407,6 +413,11 @@ async def cb_create_alert(
         return
     parts = (cb.data or "").split(":")
     action = parts[1] if len(parts) > 1 else ""
+    if action in {"confirm", "set"} and not await claim_create_action(
+        redis, u.id, cb.message.message_id, action
+    ):
+        log.debug("ignored duplicate alert-creation callback action=%s", action)
+        return
     if action == "open":
         await state.clear()
         await edit_if_changed(cb.message, f"{tr(u.language, 'create_title')}\n{tr(u.language, 'choose_coin_short')}", reply_markup=create_coin_keyboard(u.id, lang=u.language))
