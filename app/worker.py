@@ -20,13 +20,14 @@ log = logging.getLogger(__name__)
 last_success = 0.0
 
 
-def should_pause_alert(is_premium: bool, kind: str, price_index: int, free_limit: int) -> bool:
+def should_pause_alert(
+    is_premium: bool, kind: str, alert_index: int, free_limit: int, premium_limit: int
+) -> bool:
     """Return whether an active alert exceeds the user's current entitlement."""
-    if is_premium:
-        return False
-    if kind == "gas":
+    if kind == "gas" and not is_premium:
         return True
-    return price_index > free_limit
+    limit = premium_limit if is_premium else free_limit
+    return alert_index > limit
 
 
 async def _send(bot: Bot, chat_id: int, text: str) -> bool | None:
@@ -69,13 +70,20 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
         # price alerts beyond the Free-plan allowance. Renewal automatically unpauses them.
         now = utcnow()
         price_counts: dict[int, int] = {}
+        premium_counts: dict[int, int] = {}
         eligible_rows = []
         for alert, language, premium_until, user_id in rows:
             premium = user_id == settings.owner_id or (premium_until is not None and premium_until > now)
-            if alert.kind == "price" and not premium:
-                price_counts[user_id] = price_counts.get(user_id, 0) + 1
+            if premium:
+                premium_counts[user_id] = premium_counts.get(user_id, 0) + 1
+                alert_index = premium_counts[user_id]
+            else:
+                if alert.kind == "price":
+                    price_counts[user_id] = price_counts.get(user_id, 0) + 1
+                alert_index = price_counts.get(user_id, 0)
             should_pause = should_pause_alert(
-                premium, alert.kind, price_counts.get(user_id, 0), settings.free_alert_limit
+                premium, alert.kind, alert_index,
+                settings.free_alert_limit, settings.premium_alert_limit,
             )
             if alert.entitlement_paused != should_pause:
                 alert.entitlement_paused = should_pause
