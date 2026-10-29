@@ -389,6 +389,15 @@ def create_coin_keyboard(user_id: int, lang: str = "en") -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def edit_if_changed(message: Message, text: str, **kwargs) -> None:
+    """Ignore duplicate callback attempts that leave the message unchanged."""
+    try:
+        await message.edit_text(text, **kwargs)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+
+
 @router.callback_query(F.data.startswith("create:"))
 async def cb_create_alert(
     cb: CallbackQuery, session: AsyncSession, prices: PriceService, state: FSMContext
@@ -402,7 +411,7 @@ async def cb_create_alert(
     action = parts[1] if len(parts) > 1 else ""
     if action == "open":
         await state.clear()
-        await cb.message.edit_text(f"{tr(u.language, 'create_title')}\n{tr(u.language, 'choose_coin_short')}", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+        await edit_if_changed(cb.message, f"{tr(u.language, 'create_title')}\n{tr(u.language, 'choose_coin_short')}", reply_markup=create_coin_keyboard(u.id, lang=u.language))
         return
     if action == "coin" and len(parts) == 3:
         await state.clear()
@@ -412,7 +421,7 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "falls"), callback_data=f"create:move:{symbol}:down")],
             [InlineKeyboardButton(text=tr(u.language, "choose_another"), callback_data="create:open")],
         ]
-        await cb.message.edit_text(f"<b>{symbol.upper()}</b> {tr(u.language, 'direction_prompt')}", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        await edit_if_changed(cb.message, f"<b>{symbol.upper()}</b> {tr(u.language, 'direction_prompt')}", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
     if action == "move" and len(parts) == 4:
         symbol, direction = parts[2], parts[3]
@@ -425,7 +434,7 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "custom_price"), callback_data=f"create:customprice:{symbol}:{direction}")],
             [InlineKeyboardButton(text=tr(u.language, "back_short"), callback_data=f"create:coin:{symbol}")],
         ]
-        await cb.message.edit_text(
+        await edit_if_changed(cb.message, 
             f"<b>{symbol.upper()}</b> {tr(u.language, 'target_prompt')}"
             ,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
@@ -443,24 +452,24 @@ async def cb_create_alert(
             if action == "custompct"
             else tr(u.language, "price_prompt")
         )
-        await cb.message.edit_text(
+        await edit_if_changed(cb.message, 
             f"<b>{tr(u.language, 'create_title')} · {symbol.upper()}</b>\n{prompt}\n\n{tr(u.language, 'send_value')}"
         )
         return
     if action == "cancel":
         await state.clear()
-        await cb.message.edit_text(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
+        await edit_if_changed(cb.message, tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
         return
     if action == "confirm":
         data = await state.get_data()
         if await state.get_state() != AlertCustomInput.confirming.state or not data.get("target"):
             await state.clear()
-            await cb.message.edit_text(tr(u.language, "confirm_expired"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await edit_if_changed(cb.message, tr(u.language, "confirm_expired"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
         if await active_count(session, u.id) >= limit:
             await state.clear()
-            await cb.message.edit_text(
+            await edit_if_changed(cb.message, 
                 tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
@@ -472,7 +481,7 @@ async def cb_create_alert(
         session.add(alert)
         await session.flush()
         await state.clear()
-        await cb.message.edit_text(
+        await edit_if_changed(cb.message, 
             tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if alert.op == ">" else "below"), target=fmt_usd(alert.target)),
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
@@ -480,11 +489,11 @@ async def cb_create_alert(
     if action == "set" and len(parts) == 5:
         symbol, direction, pct_text = parts[2], parts[3], parts[4]
         if direction not in {"up", "down"} or pct_text not in {"1", "3", "5", "10"}:
-            await cb.message.edit_text(tr(u.language, "invalid_option"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await edit_if_changed(cb.message, tr(u.language, "invalid_option"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
         if await active_count(session, u.id) >= limit:
-            await cb.message.edit_text(
+            await edit_if_changed(cb.message, 
                 tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
@@ -496,7 +505,7 @@ async def cb_create_alert(
             current = None
             coin = None
         if not coin or current is None:
-            await cb.message.edit_text(tr(u.language, "market_unavailable"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await edit_if_changed(cb.message, tr(u.language, "market_unavailable"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         pct = float(pct_text) / 100
         target = current * (1 + pct if direction == "up" else 1 - pct)
@@ -505,7 +514,7 @@ async def cb_create_alert(
         session.add(alert)
         await session.flush()
         word = "above" if direction == "up" else "below"
-        await cb.message.edit_text(
+        await edit_if_changed(cb.message, 
             tr(u.language, "alert_created", id=alert.id, symbol=coin.symbol.upper(), word=tr(u.language, "above" if op == ">" else "below"), target=fmt_usd(target)) + "\n\n"
             f"{tr(u.language, 'reference_price')}: {fmt_usd(current)} · {tr(u.language, 'target_offset')}: {pct_text}%",
             reply_markup=nav_keyboard(u.id, lang=u.language),
@@ -800,7 +809,7 @@ async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
     u = await get_user(session, cb.from_user)
     if u.id == settings.owner_id:
         if cb.message:
-            await cb.message.answer(tr(u.language, "premium_owner"))
+            await edit_if_changed(cb.message, tr(u.language, "premium_owner"))
         return
     await bot.send_invoice(
         chat_id=cb.from_user.id,
