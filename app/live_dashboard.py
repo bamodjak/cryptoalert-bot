@@ -69,9 +69,7 @@ def format_dashboard(prices: dict[str, tuple[float, float]], language: str, now:
         value, timestamp = quote
         age = max(0, int(now - timestamp))
         marker = "🟢" if age <= PRICE_TTL_SECONDS else "⚪"
-        # Age changes in five-second buckets to avoid needless edits on idle feeds.
-        display_age = (age // 5) * 5
-        lines.append(f"{marker} <b>{symbol}</b> {fmt_usd(value)}  <i>{display_age}s</i>")
+        lines.append(f"{marker} <b>{symbol}</b> {fmt_usd(value)}  <i>{age}s</i>")
     lines.extend(["", tr(language, "live_footer")])
     return "\n".join(lines)
 
