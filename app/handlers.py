@@ -536,7 +536,7 @@ async def receive_custom_alert_value(
         return
     try:
         if kind == "custompct":
-            pct = parse_percentage(raw)
+            pct = parse_percentage(raw, direction=direction)
         else:
             target = parse_number(raw)
     except ValueError:
