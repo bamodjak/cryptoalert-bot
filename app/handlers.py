@@ -42,6 +42,7 @@ HELP = (
 
 def nav_keyboard(user_id: int, show_back: bool = True) -> InlineKeyboardMarkup:
     rows = [
+        [InlineKeyboardButton(text="🔔 Create Price Alert", callback_data="create:open")],
         [
             InlineKeyboardButton(text="₿ BTC Price", callback_data="dash:price"),
             InlineKeyboardButton(text="⛽ Ethereum Gas", callback_data="dash:gas"),
@@ -71,6 +72,18 @@ def nav_keyboard(user_id: int, show_back: bool = True) -> InlineKeyboardMarkup:
     )
     rows.append([
         InlineKeyboardButton(text="📤 Forward Referral Link", url=share_url)
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def alerts_keyboard(alerts: list[Alert], user_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"🗑 #{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}")]
+        for alert in alerts[:20]
+    ]
+    rows.append([
+        InlineKeyboardButton(text="🔔 Create alert", callback_data="create:open"),
+        InlineKeyboardButton(text="🏠 Home", callback_data="nav:home"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
