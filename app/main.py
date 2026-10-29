@@ -57,7 +57,7 @@ def build_web_app(redis: Redis) -> web.Application:
         except Exception:
             log.exception("health check failed")
             return web.json_response({"ok": False, "error": "dependency check failed"}, status=503, headers=CORS_HEADERS)
-        stale = worker.last_success and time.time() - worker.last_success > settings.check_interval * 5
+        stale = not worker.last_success or time.time() - worker.last_success > settings.check_interval * 5
         if stale:
             return web.json_response({"ok": False, "error": "alert worker stale"}, status=503, headers=CORS_HEADERS)
         return web.json_response({"ok": True}, headers=CORS_HEADERS)
