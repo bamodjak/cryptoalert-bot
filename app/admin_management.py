@@ -339,8 +339,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
             "missing": missing,
             "invalid": state.get("invalid", []),
         }
-        await _set_flow(redis, m.from_user.id, {"state": "confirm_grant", "payload": payload})
-        await m.answer(
+        preview = await m.answer(
             f"<b>Confirm Premium grant</b>\nExisting accounts: {len(found_ids)}\n"
             f"New account records to create: {len(missing)}\n"
             f"Premium days to add per ID: {days}\nInvalid lines: {len(payload['invalid'])}\n\n"
@@ -349,6 +348,12 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
             reply_markup=_kb([[InlineKeyboardButton(text="✅ Confirm", callback_data="um:confirm")],
                               [InlineKeyboardButton(text="❌ Cancel", callback_data="um:cancel")]]),
         )
+        await _set_flow(redis, m.from_user.id, {
+            "state": "confirm_grant",
+            "payload": payload,
+            "preview_chat_id": preview.chat.id,
+            "preview_message_id": preview.message_id,
+        })
         return
 
     await m.answer("This admin action is waiting for a button. Use /cancel to stop.")
@@ -377,6 +382,13 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
     state = json.loads(raw)
     if state.get("state") != "confirm_grant":
         await cb.answer("No pending change.", show_alert=True)
+        return
+    if (
+        not cb.message
+        or int(state.get("preview_chat_id", -1)) != cb.message.chat.id
+        or int(state.get("preview_message_id", -1)) != cb.message.message_id
+    ):
+        await cb.answer("This confirmation is stale. Review the current preview.", show_alert=True)
         return
     payload = state["payload"]
     ids, days = sorted(set(payload["ids"])), int(payload["days"])
@@ -447,7 +459,21 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
 
 @router.callback_query(F.data == "um:cancel")
 async def cancel_grant(cb: CallbackQuery, redis: Redis):
-    await redis.delete(f"adminflow:{cb.from_user.id}")
+    key = f"adminflow:{cb.from_user.id}"
+    raw = await redis.get(key)
+    try:
+        state = json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        state = {}
+    if (
+        state.get("state") != "confirm_grant"
+        or not cb.message
+        or int(state.get("preview_chat_id", -1)) != cb.message.chat.id
+        or int(state.get("preview_message_id", -1)) != cb.message.message_id
+    ):
+        await cb.answer("This confirmation is stale.", show_alert=True)
+        return
+    await redis.delete(key)
     if cb.message:
         await cb.message.edit_text("Cancelled. No Premium days were changed.", reply_markup=_kb([
             [InlineKeyboardButton(text="👥 Back to Users", callback_data="admin:users")], _back()
