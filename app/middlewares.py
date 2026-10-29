@@ -18,7 +18,11 @@ def safe_callback_action(callback_data: str | None) -> str:
     if not parts or not parts[0]:
         return "unknown"
     prefix = parts[0]
-    if prefix in {"create", "dash", "nav", "lang", "admin", "user", "premium"}:
+    if prefix == "admin" and len(parts) > 2 and parts[1] == "broadcast" and parts[2] in {"confirm", "cancel"}:
+        return f"admin:broadcast:{parts[2]}"
+    if prefix == "um" and len(parts) > 2 and parts[1] == "export" and parts[2] in {"users", "invites"}:
+        return f"um:export:{parts[2]}"
+    if prefix in {"create", "dash", "nav", "lang", "admin", "user", "premium", "um"}:
         return ":".join(parts[:2]) if len(parts) > 1 and parts[1] else prefix
     if prefix == "alertdel":
         return "alertdel:delete"
