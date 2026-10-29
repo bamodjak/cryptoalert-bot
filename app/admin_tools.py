@@ -189,7 +189,12 @@ async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     if not payment or payment.status != "pending":
         await m.answer("Pending payment not found.")
         return
-    user = await session.get(User, payment.user_id)
+    user = await session.scalar(
+        select(User)
+        .where(User.id == payment.user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if not user:
         await m.answer("User record not found; payment left pending.")
         return
