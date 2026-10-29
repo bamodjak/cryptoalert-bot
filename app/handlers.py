@@ -24,7 +24,7 @@ from .config import settings
 from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
-from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_referral
+from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
 from .prices import PriceError, PriceService
 
 class AlertCustomInput(StatesGroup):
@@ -501,10 +501,7 @@ async def receive_custom_alert_value(
         return
     try:
         if kind == "custompct":
-            pct_text = raw[:-1].strip() if raw.endswith("%") else raw
-            pct = parse_number(pct_text)
-            if not 0.01 <= pct <= 1000:
-                raise ValueError("percentage out of range")
+            pct = parse_percentage(raw)
         else:
             target = parse_number(raw)
     except ValueError:
