@@ -307,7 +307,7 @@ async def cmd_alert(m: Message, command: CommandObject, session: AsyncSession, p
         pass
     word = "above" if op == ">" else "below"
     await m.answer(
-        f"Alert #{alert.id} set: {alert.symbol} {word} {fmt_usd(target)}{now}.",
+        f"تنبيه رقم {alert.id}: {alert.symbol} {word} {fmt_usd(target)}{now}." if u.language == "ar" else f"Alert #{alert.id} set: {alert.symbol} {word} {fmt_usd(target)}{now}.",
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
@@ -376,7 +376,7 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
 @router.message(Command("create"))
 async def cmd_create(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
-    await m.answer("🔔 <b>Create a price alert</b>\nChoose a coin to get started.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+    await m.answer(f"{tr(u.language, 'create_title')}\n{tr(u.language, 'choose_coin')}", reply_markup=create_coin_keyboard(u.id, lang=u.language))
 
 
 def create_coin_keyboard(user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
@@ -405,7 +405,7 @@ async def cb_create_alert(
     action = parts[1] if len(parts) > 1 else ""
     if action == "open":
         await state.clear()
-        await cb.message.edit_text("🔔 <b>Create a price alert</b>\nChoose a coin.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+        await cb.message.edit_text(f"{tr(u.language, 'create_title')}\n{tr(u.language, 'choose_coin_short')}", reply_markup=create_coin_keyboard(u.id, lang=u.language))
         return
     if action == "coin" and len(parts) == 3:
         await state.clear()
@@ -415,7 +415,7 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "falls"), callback_data=f"create:move:{symbol}:down")],
             [InlineKeyboardButton(text=tr(u.language, "choose_another"), callback_data="create:open")],
         ]
-        await cb.message.edit_text(f"<b>{symbol.upper()}</b> selected. When should we notify you?", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        await cb.message.edit_text(f"<b>{symbol.upper()}</b> {tr(u.language, 'direction_prompt')}", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
     if action == "move" and len(parts) == 4:
         symbol, direction = parts[2], parts[3]
@@ -430,8 +430,8 @@ async def cb_create_alert(
         ]
         word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
-            f"<b>{symbol.upper()}</b> selected.\n\nChoose a percentage change or enter your own target. "
-            f"For a custom target, you can type a price such as <code>72500</code> or a percentage such as <code>2.5%</code>.",
+            f"<b>{symbol.upper()}</b> {tr(u.language, 'target_prompt')}"
+            ,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
         )
         return
@@ -448,7 +448,7 @@ async def cb_create_alert(
             else tr(u.language, "price_prompt")
         )
         await cb.message.edit_text(
-            f"<b>Custom alert · {symbol.upper()}</b>\n{prompt}\n\nSend one value in this chat. Send /cancel to stop."
+            f"<b>{tr(u.language, 'create_title')} · {symbol.upper()}</b>\n{prompt}\n\n{tr(u.language, 'send_value')}"
         )
         return
     if action == "cancel":
@@ -512,7 +512,7 @@ async def cb_create_alert(
         word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
             f"✅ <b>Alert created</b>\nWe’ll notify you when <b>{coin.symbol.upper()}</b> goes {word} <b>{fmt_usd(target)}</b>.\n\n"
-            f"Reference price: {fmt_usd(current)} · Target offset: {pct_text}%",
+            f"{tr(u.language, 'reference_price')}: {fmt_usd(current)} · {tr(u.language, 'target_offset')}: {pct_text}%",
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
         return
@@ -568,8 +568,8 @@ async def receive_custom_alert_value(
     await state.set_state(AlertCustomInput.confirming)
     word = "above" if direction == "up" else "below"
     await m.answer(
-        f"Please confirm your alert:\n<b>{coin.symbol.upper()}</b> {word} <b>{fmt_usd(target)}</b>\n"
-        f"Current price: {fmt_usd(current)}\nTarget type: {label}",
+        f"{tr(u.language, 'confirm_prompt')}\n<b>{coin.symbol.upper()}</b> {word} <b>{fmt_usd(target)}</b>\n"
+        f"{tr(u.language, 'current_price')}: {fmt_usd(current)}\n{tr(u.language, 'target_type')}: {label}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=tr(u.language, "confirm"), callback_data="create:confirm"),
             InlineKeyboardButton(text=tr(u.language, "cancel"), callback_data="create:cancel"),
