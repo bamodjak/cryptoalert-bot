@@ -24,6 +24,7 @@ from .config import settings
 from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
+from .i18n import tr, welcome_text
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
 from .prices import PriceError, PriceService
 
@@ -47,20 +48,20 @@ HELP = (
 )
 
 
-def nav_keyboard(user_id: int, show_back: bool = True) -> InlineKeyboardMarkup:
+def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="🔔 Create Price Alert", callback_data="create:open")],
+        [InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open")],
         [
-            InlineKeyboardButton(text="₿ BTC Price", callback_data="dash:price"),
-            InlineKeyboardButton(text="⛽ Ethereum Gas", callback_data="dash:gas"),
+            InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
+            InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
         [
-            InlineKeyboardButton(text="🔔 My Alerts", callback_data="dash:alerts"),
-            InlineKeyboardButton(text="⭐ Premium", callback_data="dash:premium"),
+            InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
+            InlineKeyboardButton(text=tr(lang, "premium"), callback_data="dash:premium"),
         ],
         [
-            InlineKeyboardButton(text="🔗 Referrals", callback_data="nav:share"),
-            InlineKeyboardButton(text="ℹ️ Help", callback_data="nav:home"),
+            InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
+            InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:home"),
         ],
     ]
     if user_id in settings.admin_id_set:
@@ -69,27 +70,26 @@ def nav_keyboard(user_id: int, show_back: bool = True) -> InlineKeyboardMarkup:
         ])
     if show_back:
         rows.append([
-            InlineKeyboardButton(text="⬅️ Back", callback_data="nav:back"),
-            InlineKeyboardButton(text="🏠 Home", callback_data="nav:home"),
+            InlineKeyboardButton(text=tr(lang, "back"), callback_data="nav:back"),
+            InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home"),
         ])
     ref_link = f"https://t.me/{settings.bot_username}?start=ref_{user_id}"
     share_url = (
         "https://t.me/share/url?url=" + quote(ref_link)
         + "&text=" + quote("Real-time Crypto Price & Ethereum Gas Alerts!")
     )
-    rows.append([
-        InlineKeyboardButton(text="📤 Forward Referral Link", url=share_url)
-    ])
+    rows.append([InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")])
+    rows.append([InlineKeyboardButton(text=tr(lang, "share"), url=share_url)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def alerts_keyboard(alerts: list[Alert], user_id: int) -> InlineKeyboardMarkup:
+def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text=f"🗑 #{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}")]
         for alert in alerts[:20]
     ]
     rows.append([
-        InlineKeyboardButton(text="🔔 Create alert", callback_data="create:open"),
+        InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open"),
         InlineKeyboardButton(text="🏠 Home", callback_data="nav:home"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -118,6 +118,7 @@ async def get_user(
                 username=tg_user.username,
                 first_name=tg_user.first_name,
                 last_name=tg_user.last_name,
+                language="ar" if (getattr(tg_user, "language_code", None) or "").lower().startswith("ar") else "en",
                 referred_by=ref_id,
                 affiliation_shares=0,
                 referrals_count=0,
@@ -181,15 +182,15 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 "\n\n🎁 <b>Your invitation is confirmed!</b> "
                 "Your Premium access is attached to this Telegram account."
             )
-            await m.answer(HELP + premium_note, reply_markup=nav_keyboard(u.id, show_back=False))
+            await m.answer(welcome_text(u.language) + premium_note, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
             return
-    await m.answer(HELP, reply_markup=nav_keyboard(u.id, show_back=False))
+    await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
 
 
 @router.message(Command("help"))
 async def cmd_help(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
-    await m.answer(HELP, reply_markup=nav_keyboard(u.id, show_back=True))
+    await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
 
 
 @router.callback_query(F.data.in_({"nav:home", "nav:back"}))
@@ -198,7 +199,7 @@ async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     if cb.message:
         try:
             await cb.message.edit_text(
-                HELP, reply_markup=nav_keyboard(u.id, show_back=False)
+                welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language)
             )
         except TelegramBadRequest as exc:
             if "message is not modified" not in str(exc).lower():
