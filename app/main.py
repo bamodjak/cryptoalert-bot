@@ -22,7 +22,7 @@ from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .admin_management import router as admin_management_router
-from .middlewares import KILL_KEY, DbSessionMiddleware, KillSwitchMiddleware, ThrottleMiddleware
+from .middlewares import KILL_KEY, CallbackTraceMiddleware, DbSessionMiddleware, KillSwitchMiddleware, ThrottleMiddleware
 from .prices import PriceService
 
 log = logging.getLogger("bot")
@@ -132,6 +132,7 @@ async def main() -> None:
     dp.update.outer_middleware(KillSwitchMiddleware(redis))
     dp.update.middleware(DbSessionMiddleware())
     dp.message.middleware(ThrottleMiddleware(redis))
+    dp.callback_query.middleware(CallbackTraceMiddleware())
     register_routers(dp)
 
     # Keep each Telegram profile update independent: a profile restriction must not
