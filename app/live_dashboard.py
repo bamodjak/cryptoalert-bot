@@ -247,7 +247,10 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                             record["last_text"] = text
                             await redis.hset(DASHBOARDS_KEY, user_key, json.dumps(record))
                         except TelegramBadRequest as exc:
-                            if "message is not modified" not in str(exc).lower():
+                            if "message is not modified" in str(exc).lower():
+                                record["last_text"] = text
+                                await redis.hset(DASHBOARDS_KEY, user_key, json.dumps(record))
+                            else:
                                 log.debug("live dashboard edit rejected: %s", exc)
                         except TelegramForbiddenError:
                             await redis.hdel(DASHBOARDS_KEY, user_key)
