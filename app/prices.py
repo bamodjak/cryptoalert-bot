@@ -64,17 +64,23 @@ class PriceService:
 
     async def _get(self, path: str, params: dict) -> dict:
         last: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 async with self.http.get(self.base + path, params=params, headers=self.headers) as r:
                     if r.status == 429:
-                        await asyncio.sleep(5 * 2**attempt)
-                        continue
+                        # Open a short circuit and fail over immediately; long sleeps
+                        # here made a button tap wait up to 35 seconds.
+                        await self.redis.set("cg:rate_limited", "1", ex=30)
+                        metrics.PRICE_ERRORS.inc()
+                        raise PriceError(f"CoinGecko rate-limited {path}")
                     r.raise_for_status()
                     return await r.json()
+            except PriceError:
+                raise
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 last = e
-                await asyncio.sleep(2**attempt)
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
         metrics.PRICE_ERRORS.inc()
         raise PriceError(f"CoinGecko {path} failed: {last}")
 
@@ -127,24 +133,60 @@ class PriceService:
         cached = await self.redis.mget([f"cg:px:{i}" for i in ids])
         out = {i: float(v) for i, v in zip(ids, cached) if v is not None}
         missing = [i for i in ids if i not in out]
-        for n in range(0, len(missing), 100):
-            chunk = missing[n:n + 100]
-            try:
-                data = await self._get("/simple/price", {"ids": ",".join(chunk), "vs_currencies": "usd"})
-            except PriceError:
-                # CoinGecko frequently rate-limits unauthenticated requests. Use
-                # a second public provider for known coins so alerts keep working.
-                data = {}
-                for cid in chunk:
-                    fallback = await self._paprika_price(cid)
-                    if fallback is not None:
-                        data[cid] = {"usd": fallback}
-            pipe = self.redis.pipeline()
-            for cid, v in data.items():
-                if "usd" in v:
-                    out[cid] = float(v["usd"])
-                    pipe.set(f"cg:px:{cid}", v["usd"], ex=max(10, settings.check_interval - 5))
-            await pipe.execute()
+        if not missing:
+            return out
+
+        # Keep a separate stale copy for brief provider outages. It is only used
+        # after fresh-cache misses and is refreshed whenever a new quote arrives.
+        stale_values = await self.redis.mget([f"cg:px:stale:{i}" for i in missing])
+        stale = {i: float(v) for i, v in zip(missing, stale_values) if v is not None}
+        try:
+            rate_limited = bool(await self.redis.exists("cg:rate_limited"))
+        except Exception:
+            rate_limited = False
+
+        data = {}
+        if not rate_limited:
+            for n in range(0, len(missing), 100):
+                chunk = missing[n:n + 100]
+                try:
+                    data.update(await self._get(
+                        "/simple/price",
+                        {"ids": ",".join(chunk), "vs_currencies": "usd"},
+                    ))
+                except PriceError:
+                    # A failed CoinGecko request should not block fallback quotes.
+                    break
+
+        unresolved = [cid for cid in missing if cid not in data or "usd" not in data.get(cid, {})]
+        if unresolved:
+            # Fetch fallback quotes concurrently instead of serially, avoiding
+            # a long wait when several coins are requested by the alert worker.
+            results = await asyncio.gather(
+                *(self._paprika_price(cid) for cid in unresolved),
+                return_exceptions=True,
+            )
+            for cid, value in zip(unresolved, results):
+                if isinstance(value, (float, int)) and value > 0:
+                    data[cid] = {"usd": float(value)}
+                elif cid in stale:
+                    data[cid] = {"usd": stale[cid]}
+
+        pipe = self.redis.pipeline()
+        for cid, value in data.items():
+            if "usd" not in value:
+                continue
+            price = float(value["usd"])
+            if price <= 0:
+                continue
+            out[cid] = price
+            pipe.set(f"cg:px:{cid}", price, ex=max(10, settings.check_interval - 5))
+            pipe.set(f"cg:px:stale:{cid}", price, ex=600)
+        await pipe.execute()
+        # If a fresh quote was unavailable, use the stale quote as a last resort.
+        for cid in missing:
+            if cid not in out and cid in stale:
+                out[cid] = stale[cid]
         return out
 
     async def gas_gwei(self) -> float:
