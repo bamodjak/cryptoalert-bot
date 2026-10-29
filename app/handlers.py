@@ -465,7 +465,7 @@ async def cb_create_alert(
         if await active_count(session, u.id) >= limit:
             await state.clear()
             await cb.message.edit_text(
-                tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\nPremium unlocks more alerts and Ethereum gas alerts."),
+                tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
             return
@@ -478,19 +478,19 @@ async def cb_create_alert(
         await state.clear()
         word = "above" if alert.op == ">" else "below"
         await cb.message.edit_text(
-            f"✅ <b>Alert #{alert.id} created</b>\nWe’ll notify you when <b>{alert.symbol}</b> goes {word} <b>{fmt_usd(alert.target)}</b>.",
+            tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if alert.op == ">" else "below"), target=fmt_usd(alert.target)),
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
         return
     if action == "set" and len(parts) == 5:
         symbol, direction, pct_text = parts[2], parts[3], parts[4]
         if direction not in {"up", "down"} or pct_text not in {"1", "3", "5", "10"}:
-            await cb.message.edit_text("That alert option is no longer valid. Start again.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await cb.message.edit_text(tr(u.language, "invalid_option"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
         if await active_count(session, u.id) >= limit:
             await cb.message.edit_text(
-                f"You have reached your limit of {limit} active alerts." + ("" if u.is_premium else "\nPremium unlocks more alerts and Ethereum gas alerts."),
+                tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
             return
@@ -501,7 +501,7 @@ async def cb_create_alert(
             current = None
             coin = None
         if not coin or current is None:
-            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly; cached market data may be available soon.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await cb.message.edit_text(tr(u.language, "market_unavailable"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         pct = float(pct_text) / 100
         target = current * (1 + pct if direction == "up" else 1 - pct)
@@ -511,7 +511,7 @@ async def cb_create_alert(
         await session.flush()
         word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
-            f"✅ <b>Alert created</b>\nWe’ll notify you when <b>{coin.symbol.upper()}</b> goes {word} <b>{fmt_usd(target)}</b>.\n\n"
+            tr(u.language, "alert_created", id=alert.id, symbol=coin.symbol.upper(), word=tr(u.language, "above" if op == ">" else "below"), target=fmt_usd(target)) + "\n\n"
             f"{tr(u.language, 'reference_price')}: {fmt_usd(current)} · {tr(u.language, 'target_offset')}: {pct_text}%",
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
@@ -526,7 +526,7 @@ async def receive_custom_alert_value(
     raw = (m.text or "").strip()
     if raw.lower() in {"/cancel", "cancel"}:
         await state.clear()
-        await m.answer("Custom alert cancelled.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
         return
     data = await state.get_data()
     symbol, direction, kind = data.get("symbol"), data.get("direction"), data.get("custom_kind")
@@ -541,7 +541,7 @@ async def receive_custom_alert_value(
             target = parse_number(raw)
     except ValueError:
         prompt = (tr(u.language, "invalid_pct") if kind == "custompct" else tr(u.language, "invalid_price"))
-        await m.answer(f"Invalid value. {prompt} Send /cancel to stop.")
+        await m.answer(f"{tr(u.language, 'invalid_value')} {prompt} {tr(u.language, 'send_value')}")
         return
     try:
         coin = await prices.resolve(symbol)
@@ -553,7 +553,7 @@ async def receive_custom_alert_value(
         return
     if kind == "custompct":
         target = current * (1 + pct / 100 if direction == "up" else 1 - pct / 100)
-        label = f"{pct:g}% change from current price"
+        label = f"{tr(u.language, 'change_from_current')} ({pct:g}%)"
     else:
         if (direction == "up" and target <= current) or (direction == "down" and target >= current):
             relation = tr(u.language, "higher_than" if direction == "up" else "lower_than")
@@ -566,9 +566,9 @@ async def receive_custom_alert_value(
         current=float(current), target_label=label,
     )
     await state.set_state(AlertCustomInput.confirming)
-    word = "above" if direction == "up" else "below"
+    relation = tr(u.language, "above" if direction == "up" else "below")
     await m.answer(
-        f"{tr(u.language, 'confirm_prompt')}\n<b>{coin.symbol.upper()}</b> {word} <b>{fmt_usd(target)}</b>\n"
+        f"{tr(u.language, 'confirm_prompt')}\n{tr(u.language, 'confirm_alert_line', symbol=coin.symbol.upper(), relation=relation, target=fmt_usd(target))}\n"
         f"{tr(u.language, 'current_price')}: {fmt_usd(current)}\n{tr(u.language, 'target_type')}: {label}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=tr(u.language, "confirm"), callback_data="create:confirm"),
