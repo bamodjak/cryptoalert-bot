@@ -880,6 +880,8 @@ async def paid(m: Message, session: AsyncSession):
         if inserted is None:
             await m.answer(tr(u.language, "payment_duplicate_recorded"))
         else:
+            # Persist unmatched charges before telling the user support must review them.
+            await session.commit()
             await m.answer(tr(u.language, "payment_mismatch_contact", support=settings.support_contact))
         return
     days = settings.premium_days
@@ -898,6 +900,9 @@ async def paid(m: Message, session: AsyncSession):
         await m.answer(tr(u.language, "payment_duplicate_processed"))
         return
     u.premium_until = expiry
+    # Do not tell the customer Premium is active until the charge ledger and
+    # entitlement have committed successfully.
+    await session.commit()
     metrics.PAYMENTS.inc()
     await m.answer(
         tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d")),
