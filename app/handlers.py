@@ -271,8 +271,8 @@ async def cmd_alerts(m: Message, session: AsyncSession):
         val = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
         lines.append(f"#{a.id} {a.symbol} {word} {val}")
     await m.answer(
-        "Your alerts:\n" + "\n".join(lines) + "\n\nDelete with /del &lt;id&gt;",
-        reply_markup=nav_keyboard(u.id),
+        "🔔 <b>Your active alerts</b>\n" + "\n".join(lines) + "\n\nTap an alert below to remove it.",
+        reply_markup=alerts_keyboard(rows, u.id),
     )
 
 
@@ -434,9 +434,9 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
                 word = "above" if a.op == ">" else "below"
                 value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
                 lines.append(f"#{a.id} {a.symbol} {word} {value}")
-            text = "Your active alerts:\n" + "\n".join(lines)
+            text = "🔔 <b>Your active alerts</b>\n" + "\n".join(lines)
         else:
-            text = "You have no active alerts yet. Create one with /alert btc > 70000."
+            text = "You have no active alerts yet. Tap below to create your first alert."
     elif action == "premium":
         text = (
             f"⭐ Premium: {settings.premium_price_stars} Stars for {settings.premium_days} days.\n"
@@ -446,8 +446,9 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
     else:
         return
 
+    keyboard = alerts_keyboard(rows, u.id) if action == "alerts" and "rows" in locals() else nav_keyboard(u.id)
     try:
-        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id))
+        await cb.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
