@@ -156,7 +156,9 @@ async def get_user(
 
 async def active_count(session: AsyncSession, user_id: int) -> int:
     return await session.scalar(
-        select(func.count()).select_from(Alert).where(Alert.user_id == user_id, Alert.active.is_(True))
+        select(func.count()).select_from(Alert).where(
+            Alert.user_id == user_id, Alert.active.is_(True), Alert.entitlement_paused.is_(False)
+        )
     ) or 0
 
 
@@ -348,7 +350,8 @@ async def cmd_alerts(m: Message, session: AsyncSession):
     for a in rows:
         word = tr(u.language, "above" if a.op == ">" else "below")
         val = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
-        lines.append(f"#{a.id} {a.symbol} {word} {val}")
+        paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
+        lines.append(f"{paused}#{a.id} {a.symbol} {word} {val}")
     await m.answer(
         tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
         reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
@@ -664,7 +667,8 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
             for a in rows:
                 word = "above" if a.op == ">" else "below"
                 value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
-                lines.append(f"#{a.id} {a.symbol} {word} {value}")
+                paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
+            lines.append(f"{paused}#{a.id} {a.symbol} {word} {value}")
             text = "🔔 <b>Your active alerts</b>\n" + "\n".join(lines)
         else:
             text = tr(u.language, "no_alerts")
