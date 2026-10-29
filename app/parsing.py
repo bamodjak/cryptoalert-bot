@@ -15,6 +15,17 @@ def parse_number(s: str) -> float:
     return v
 
 
+def parse_percentage(text: str) -> float:
+    """Parse a custom percentage change in the supported range 0.01..1000."""
+    cleaned = (text or "").strip()
+    if cleaned.endswith("%"):
+        cleaned = cleaned[:-1].strip()
+    value = parse_number(cleaned)
+    if not 0.01 <= value <= 1000:
+        raise ValueError("percentage out of range")
+    return value
+
+
 def parse_alert(text: str) -> tuple[str, str, float]:
     m = _ALERT.match(text or "")
     if not m:

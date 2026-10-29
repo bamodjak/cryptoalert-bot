@@ -5,6 +5,8 @@ from urllib.parse import quote
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -22,8 +24,13 @@ from .config import settings
 from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
-from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_referral
+from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
 from .prices import PriceError, PriceService
+
+class AlertCustomInput(StatesGroup):
+    waiting = State()
+    confirming = State()
+
 
 router = Router(name="user")
 admin = Router(name="admin")
@@ -351,7 +358,10 @@ def create_coin_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 
 @router.callback_query(F.data.startswith("create:"))
-async def cb_create_alert(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+async def cb_create_alert(
+    cb: CallbackQuery, session: AsyncSession, prices: PriceService, state: FSMContext
+):
+    # Acknowledge immediately so Telegram's spinner never waits on a market-data API.
     await cb.answer()
     u = await get_user(session, cb.from_user)
     if not cb.message:
@@ -359,9 +369,11 @@ async def cb_create_alert(cb: CallbackQuery, session: AsyncSession, prices: Pric
     parts = (cb.data or "").split(":")
     action = parts[1] if len(parts) > 1 else ""
     if action == "open":
+        await state.clear()
         await cb.message.edit_text("🔔 <b>Create a price alert</b>\nChoose a coin.", reply_markup=create_coin_keyboard(u.id))
         return
     if action == "coin" and len(parts) == 3:
+        await state.clear()
         symbol = parts[2]
         rows = [
             [InlineKeyboardButton(text="📈 Alert when it rises", callback_data=f"create:move:{symbol}:up")],
@@ -372,22 +384,67 @@ async def cb_create_alert(cb: CallbackQuery, session: AsyncSession, prices: Pric
         return
     if action == "move" and len(parts) == 4:
         symbol, direction = parts[2], parts[3]
-        try:
-            coin = await prices.resolve(symbol)
-            current = (await prices.prices([coin.id])).get(coin.id) if coin else None
-        except PriceError:
-            current = None
-            coin = None
-        if not coin or current is None:
-            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly.", reply_markup=create_coin_keyboard(u.id))
+        if direction not in {"up", "down"}:
             return
         sign = "+" if direction == "up" else "−"
-        rows = [[InlineKeyboardButton(text=f"{sign}{pct}%", callback_data=f"create:set:{symbol}:{direction}:{pct}") for pct in (1, 3, 5, 10)]]
-        rows.append([InlineKeyboardButton(text="⬅️ Back", callback_data=f"create:coin:{symbol}")])
+        rows = [
+            [InlineKeyboardButton(text=f"{sign}{pct}%", callback_data=f"create:set:{symbol}:{direction}:{pct}") for pct in (1, 3, 5, 10)],
+            [InlineKeyboardButton(text="✏️ Custom percentage", callback_data=f"create:custompct:{symbol}:{direction}")],
+            [InlineKeyboardButton(text="🎯 Exact target price", callback_data=f"create:customprice:{symbol}:{direction}")],
+            [InlineKeyboardButton(text="⬅️ Back", callback_data=f"create:coin:{symbol}")],
+        ]
         word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
-            f"<b>{coin.name} ({coin.symbol.upper()})</b>\nCurrent price: <b>{fmt_usd(current)}</b>\n\nChoose how far {word} the current price the alert should be.",
+            f"<b>{symbol.upper()}</b> selected.\n\nChoose a percentage change or enter your own target. "
+            f"For a custom target, you can type a price such as <code>72500</code> or a percentage such as <code>2.5%</code>.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+        return
+    if action in {"custompct", "customprice"} and len(parts) == 4:
+        symbol, direction = parts[2], parts[3]
+        if direction not in {"up", "down"}:
+            await state.clear()
+            return
+        await state.set_state(AlertCustomInput.waiting)
+        await state.update_data(custom_kind=action, symbol=symbol, direction=direction)
+        prompt = (
+            "Enter a percentage from 0.01% to 1000%, for example <code>2.5%</code>."
+            if action == "custompct"
+            else "Enter the exact USD target price, for example <code>72500</code> or <code>0.25</code>."
+        )
+        await cb.message.edit_text(
+            f"<b>Custom alert · {symbol.upper()}</b>\n{prompt}\n\nSend one value in this chat. Send /cancel to stop."
+        )
+        return
+    if action == "cancel":
+        await state.clear()
+        await cb.message.edit_text("Custom alert cancelled.", reply_markup=nav_keyboard(u.id))
+        return
+    if action == "confirm":
+        data = await state.get_data()
+        if await state.get_state() != AlertCustomInput.confirming.state or not data.get("target"):
+            await state.clear()
+            await cb.message.edit_text("That alert preview expired. Please start again.", reply_markup=create_coin_keyboard(u.id))
+            return
+        limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
+        if await active_count(session, u.id) >= limit:
+            await state.clear()
+            await cb.message.edit_text(
+                f"You have reached your limit of {limit} active alerts." + ("" if u.is_premium else "\nPremium unlocks more alerts and Ethereum gas alerts."),
+                reply_markup=nav_keyboard(u.id),
+            )
+            return
+        alert = Alert(
+            user_id=u.id, kind="price", coin_id=data["coin_id"], symbol=data["symbol"],
+            op=data["op"], target=float(data["target"]),
+        )
+        session.add(alert)
+        await session.flush()
+        await state.clear()
+        word = "above" if alert.op == ">" else "below"
+        await cb.message.edit_text(
+            f"✅ <b>Alert #{alert.id} created</b>\nWe’ll notify you when <b>{alert.symbol}</b> goes {word} <b>{fmt_usd(alert.target)}</b>.",
+            reply_markup=nav_keyboard(u.id),
         )
         return
     if action == "set" and len(parts) == 5:
@@ -404,12 +461,12 @@ async def cb_create_alert(cb: CallbackQuery, session: AsyncSession, prices: Pric
             return
         try:
             coin = await prices.resolve(symbol)
-            current = (await prices.prices([coin.id])).get(coin.id) if coin else None
+            current = (await prices.prices([coin.id], allow_stale=True)).get(coin.id) if coin else None
         except PriceError:
             current = None
             coin = None
         if not coin or current is None:
-            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly.", reply_markup=create_coin_keyboard(u.id))
+            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly; cached market data may be available soon.", reply_markup=create_coin_keyboard(u.id))
             return
         pct = float(pct_text) / 100
         target = current * (1 + pct if direction == "up" else 1 - pct)
@@ -424,6 +481,71 @@ async def cb_create_alert(cb: CallbackQuery, session: AsyncSession, prices: Pric
             reply_markup=nav_keyboard(u.id),
         )
         return
+
+
+@router.message(AlertCustomInput.waiting, F.text)
+async def receive_custom_alert_value(
+    m: Message, state: FSMContext, session: AsyncSession, prices: PriceService
+):
+    u = await get_user(session, m.from_user)
+    raw = (m.text or "").strip()
+    if raw.lower() in {"/cancel", "cancel"}:
+        await state.clear()
+        await m.answer("Custom alert cancelled.", reply_markup=nav_keyboard(u.id))
+        return
+    data = await state.get_data()
+    symbol, direction, kind = data.get("symbol"), data.get("direction"), data.get("custom_kind")
+    if not symbol or direction not in {"up", "down"} or kind not in {"custompct", "customprice"}:
+        await state.clear()
+        await m.answer("That custom alert expired. Please start again.", reply_markup=create_coin_keyboard(u.id))
+        return
+    try:
+        if kind == "custompct":
+            pct = parse_percentage(raw)
+        else:
+            target = parse_number(raw)
+    except ValueError:
+        prompt = ("Enter a percentage from 0.01% to 1000% for rises, or 0.01% to less than 100% for falls, e.g. 2.5%." if kind == "custompct" else "Enter a positive USD target price, e.g. 72500.")
+        await m.answer(f"Invalid value. {prompt} Send /cancel to stop.")
+        return
+    try:
+        coin = await prices.resolve(symbol)
+        current = (await prices.prices([coin.id])).get(coin.id) if coin else None
+    except PriceError:
+        coin, current = None, None
+    if not coin or current is None:
+        await m.answer("Market data is temporarily unavailable. Please try again in a moment; your alert has not been saved.")
+        return
+    if kind == "custompct":
+        target = current * (1 + pct / 100 if direction == "up" else 1 - pct / 100)
+        label = f"{pct:g}% change from current price"
+    else:
+        if (direction == "up" and target <= current) or (direction == "down" and target >= current):
+            relation = "higher than" if direction == "up" else "lower than"
+            await m.answer(f"For an alert when {symbol.upper()} {'rises' if direction == 'up' else 'falls'}, the target must be {relation} the current price ({fmt_usd(current)}). Enter another value or /cancel.")
+            return
+        label = "exact target price"
+    op = ">" if direction == "up" else "<"
+    await state.update_data(
+        coin_id=coin.id, symbol=coin.symbol.upper(), op=op, target=float(target),
+        current=float(current), target_label=label,
+    )
+    await state.set_state(AlertCustomInput.confirming)
+    word = "above" if direction == "up" else "below"
+    await m.answer(
+        f"Please confirm your alert:\n<b>{coin.symbol.upper()}</b> {word} <b>{fmt_usd(target)}</b>\n"
+        f"Current price: {fmt_usd(current)}\nTarget type: {label}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Confirm alert", callback_data="create:confirm"),
+            InlineKeyboardButton(text="✖️ Cancel", callback_data="create:cancel"),
+        ]]),
+    )
+
+
+@router.message(Command("cancel"))
+async def cmd_cancel_alert(m: Message, state: FSMContext):
+    await state.clear()
+    await m.answer("Custom alert cancelled.", reply_markup=nav_keyboard(m.from_user.id))
 
 
 @router.callback_query(F.data.startswith("alertdel:"))
