@@ -890,6 +890,11 @@ async def paid(m: Message, session: AsyncSession):
             await session.commit()
             await m.answer(tr(u.language, "payment_mismatch_contact", support=settings.support_contact))
         return
+    # Serialize concurrent purchases for the same user so two successful charges
+    # cannot calculate the same expiry and overwrite one another.
+    u = await session.scalar(select(User).where(User.id == u.id).with_for_update())
+    if u is None:
+        raise RuntimeError("Payment user disappeared before entitlement update")
     days = settings.premium_days
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     expiry = base + timedelta(days=days)
@@ -974,6 +979,8 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
             "This payment already has a refund with an uncertain result. Do not retry it automatically; "
             "reconcile the transaction with Telegram first."
         )
+    # Serialize refunds for the same account before checking for an in-doubt operation.
+    await session.scalar(select(User.id).where(User.id == p.user_id).with_for_update())
     other_pending = await session.scalar(
         select(Payment.id).where(
             Payment.user_id == p.user_id, Payment.refund_pending.is_(True)
