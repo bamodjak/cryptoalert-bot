@@ -59,6 +59,7 @@ class Alert(Base):
 
 class Payment(Base):
     __tablename__ = "payments"
+    __table_args__ = (Index("ix_payments_refund_pending", "refund_pending"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True)
