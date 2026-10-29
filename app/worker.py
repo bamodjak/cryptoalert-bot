@@ -5,6 +5,7 @@ import time
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from redis.asyncio import Redis
+from redis.exceptions import LockNotOwnedError
 from sqlalchemy import select, update
 
 from . import metrics
@@ -100,12 +101,54 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
         log.info("fired %d alerts", len(fired))
 
 
+async def _renew_worker_lock(lock, stop: asyncio.Event) -> None:
+    """Keep the distributed worker lock alive during long alert batches."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=30)
+            return
+        except asyncio.TimeoutError:
+            pass
+        try:
+            if not await lock.extend(90, replace_ttl=True):
+                log.warning("alert worker lock could not be renewed")
+                return
+        except LockNotOwnedError:
+            log.warning("alert worker lock expired before renewal")
+            return
+        except Exception:
+            log.exception("alert worker lock renewal failed")
+            return
+
+
+async def _run_check_with_lock(bot: Bot, prices: PriceService, redis: Redis) -> bool:
+    """Ensure only one overlapping deployment/instance sends alerts at a time."""
+    lock = redis.lock("bot:alert-worker:check", timeout=90, blocking=False)
+    if not await lock.acquire(blocking=False):
+        log.debug("skipping alert check; another instance owns the worker lock")
+        return False
+
+    stop_renewal = asyncio.Event()
+    renewal_task = asyncio.create_task(_renew_worker_lock(lock, stop_renewal))
+    try:
+        await check_once(bot, prices)
+        return True
+    finally:
+        stop_renewal.set()
+        renewal_task.cancel()
+        await asyncio.gather(renewal_task, return_exceptions=True)
+        try:
+            await lock.release()
+        except LockNotOwnedError:
+            log.warning("alert worker lock was no longer owned at release")
+
+
 async def alert_loop(bot: Bot, prices: PriceService, redis: Redis, stop: asyncio.Event) -> None:
     log.info("alert worker started, every %ss", settings.check_interval)
     while not stop.is_set():
         try:
             if not await redis.exists(KILL_KEY):
-                await check_once(bot, prices)
+                await _run_check_with_lock(bot, prices, redis)
         except PriceError as e:
             log.warning("price source error: %s", e)
         except Exception:

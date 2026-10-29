@@ -200,7 +200,12 @@ async def main() -> None:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         stop.set()
-        await worker_task
+        try:
+            await asyncio.wait_for(worker_task, timeout=10)
+        except asyncio.TimeoutError:
+            log.warning("alert worker did not stop promptly; cancelling during shutdown")
+            worker_task.cancel()
+            await asyncio.gather(worker_task, return_exceptions=True)
         if runner:
             await runner.cleanup()
         await http.close()
