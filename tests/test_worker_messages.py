@@ -91,3 +91,24 @@ def test_alert_check_lock_runs_and_releases(monkeypatch):
     monkeypatch.setattr(worker, "check_once", fake_check)
     assert asyncio.run(worker._run_check_with_lock(None, None, FakeRedis())) is True
     assert calls == ["checked"]
+
+
+def test_claim_create_action_allows_only_first_action_for_prompt():
+    import asyncio
+    from app.handlers import claim_create_action
+
+    class FakeRedis:
+        def __init__(self):
+            self.keys = set()
+
+        async def set(self, key, value, ex=None, nx=False):
+            if nx and key in self.keys:
+                return None
+            self.keys.add(key)
+            return "OK"
+
+    redis = FakeRedis()
+    assert asyncio.run(claim_create_action(redis, 42, 100, "set")) is True
+    assert asyncio.run(claim_create_action(redis, 42, 100, "set")) is False
+    assert asyncio.run(claim_create_action(redis, 42, 101, "set")) is True
+    assert asyncio.run(claim_create_action(redis, 42, 100, "confirm")) is True
