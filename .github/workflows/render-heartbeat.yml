@@ -1,6 +1,9 @@
 name: Render free-service heartbeat
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     # Best-effort inbound traffic to prevent the free web service from idling.
     - cron: "*/5 * * * *"
