@@ -30,19 +30,13 @@ admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
 
 HELP = (
-    "<b>Orbsat Labs Shop — Crypto &amp; Gas Alert Bot</b>\n\n"
-    "/price btc — current price\n"
-    "/alert btc &gt; 70000 — ping me when BTC goes above $70,000\n"
-    "/alert eth below 2.5k — ping me when ETH drops below $2,500\n"
-    "/gas — Ethereum gas now\n"
-    "/gasalert 0.04 — ping me when gas drops below 0.04 gwei (Premium)\n"
-    "/alerts — your active alerts\n"
-    "/del 12 — delete alert #12\n"
-    "/premium — more alerts + gas alerts\n"
-    "/terms · /paysupport\n\n"
-    f"Free: {settings.free_alert_limit} alerts. Premium ({settings.premium_price_stars} ⭐ / {settings.premium_days}d): "
-    f"{settings.premium_alert_limit} alerts + gas alerts.\n"
-    "<i>Information only, not financial advice.</i>"
+    "<b>Orbsat Crypto Alerts</b>\n"
+    "Smart price alerts, without command syntax. Choose a coin, pick a target, and we will notify you.\n\n"
+    "🔔 <b>Create an alert</b> from the button below.\n"
+    "📈 Check BTC, ⛽ Ethereum gas, manage alerts, or explore Premium from the menu.\n\n"
+    f"Free: up to {settings.free_alert_limit} active alerts. Premium: {settings.premium_alert_limit} alerts + Ethereum gas alerts for "
+    f"{settings.premium_price_stars} ⭐ / {settings.premium_days} days.\n\n"
+    "<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>"
 )
 
 
@@ -295,6 +289,112 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
         reply_markup=nav_keyboard(u.id),
     )
 
+
+
+@router.message(Command("create"))
+async def cmd_create(m: Message, session: AsyncSession):
+    u = await get_user(session, m.from_user)
+    await m.answer("🔔 <b>Create a price alert</b>\nChoose a coin to get started.", reply_markup=create_coin_keyboard(u.id))
+
+
+def create_coin_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    coins = [
+        ("₿ Bitcoin", "btc"), ("Ξ Ethereum", "eth"), ("◎ Solana", "sol"),
+        ("BNB", "bnb"), ("XRP", "xrp"), ("DOGE", "doge"),
+        ("TON", "ton"), ("TRX", "trx"), ("AVAX", "avax"),
+    ]
+    rows = [[InlineKeyboardButton(text=label, callback_data=f"create:coin:{symbol}") for label, symbol in coins[i:i + 3]] for i in range(0, len(coins), 3)]
+    rows.append([InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("create:"))
+async def cb_create_alert(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    await cb.answer()
+    u = await get_user(session, cb.from_user)
+    if not cb.message:
+        return
+    parts = (cb.data or "").split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    if action == "open":
+        await cb.message.edit_text("🔔 <b>Create a price alert</b>\nChoose a coin.", reply_markup=create_coin_keyboard(u.id))
+        return
+    if action == "coin" and len(parts) == 3:
+        symbol = parts[2]
+        rows = [
+            [InlineKeyboardButton(text="📈 Alert when it rises", callback_data=f"create:move:{symbol}:up")],
+            [InlineKeyboardButton(text="📉 Alert when it falls", callback_data=f"create:move:{symbol}:down")],
+            [InlineKeyboardButton(text="⬅️ Choose another coin", callback_data="create:open")],
+        ]
+        await cb.message.edit_text(f"<b>{symbol.upper()}</b> selected. When should we notify you?", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+    if action == "move" and len(parts) == 4:
+        symbol, direction = parts[2], parts[3]
+        try:
+            coin = await prices.resolve(symbol)
+            current = (await prices.prices([coin.id])).get(coin.id) if coin else None
+        except PriceError:
+            current = None
+            coin = None
+        if not coin or current is None:
+            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly.", reply_markup=create_coin_keyboard(u.id))
+            return
+        sign = "+" if direction == "up" else "−"
+        rows = [[InlineKeyboardButton(text=f"{sign}{pct}%", callback_data=f"create:set:{symbol}:{direction}:{pct}") for pct in (1, 3, 5, 10)]]
+        rows.append([InlineKeyboardButton(text="⬅️ Back", callback_data=f"create:coin:{symbol}")])
+        word = "above" if direction == "up" else "below"
+        await cb.message.edit_text(
+            f"<b>{coin.name} ({coin.symbol.upper()})</b>\nCurrent price: <b>{fmt_usd(current)}</b>\n\nChoose how far {word} the current price the alert should be.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+        return
+    if action == "set" and len(parts) == 5:
+        symbol, direction, pct_text = parts[2], parts[3], parts[4]
+        if direction not in {"up", "down"} or pct_text not in {"1", "3", "5", "10"}:
+            await cb.message.edit_text("That alert option is no longer valid. Start again.", reply_markup=create_coin_keyboard(u.id))
+            return
+        limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
+        if await active_count(session, u.id) >= limit:
+            await cb.message.edit_text(
+                f"You have reached your limit of {limit} active alerts." + ("" if u.is_premium else "\nPremium unlocks more alerts and Ethereum gas alerts."),
+                reply_markup=nav_keyboard(u.id),
+            )
+            return
+        try:
+            coin = await prices.resolve(symbol)
+            current = (await prices.prices([coin.id])).get(coin.id) if coin else None
+        except PriceError:
+            current = None
+            coin = None
+        if not coin or current is None:
+            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly.", reply_markup=create_coin_keyboard(u.id))
+            return
+        pct = float(pct_text) / 100
+        target = current * (1 + pct if direction == "up" else 1 - pct)
+        op = ">" if direction == "up" else "<"
+        alert = Alert(user_id=u.id, kind="price", coin_id=coin.id, symbol=coin.symbol.upper(), op=op, target=target)
+        session.add(alert)
+        await session.flush()
+        word = "above" if direction == "up" else "below"
+        await cb.message.edit_text(
+            f"✅ <b>Alert created</b>\nWe’ll notify you when <b>{coin.symbol.upper()}</b> goes {word} <b>{fmt_usd(target)}</b>.\n\n"
+            f"Reference price: {fmt_usd(current)} · Target offset: {pct_text}%",
+            reply_markup=nav_keyboard(u.id),
+        )
+        return
+
+
+@router.callback_query(F.data.startswith("alertdel:"))
+async def cb_delete_alert(cb: CallbackQuery, session: AsyncSession):
+    await cb.answer()
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        return
+    result = await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.user_id == cb.from_user.id))
+    if cb.message:
+        message = "✅ Alert deleted." if result.rowcount else "That alert was already removed."
+        await cb.message.edit_text(message, reply_markup=nav_keyboard(cb.from_user.id))
 
 
 @router.callback_query(F.data.startswith("dash:"))
