@@ -790,9 +790,9 @@ def premium_copy(lang: str = "en") -> str:
 async def cmd_premium(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
     if u.id == settings.owner_id:
-        return await m.answer("⭐ Premium is enabled for the owner account at no charge.")
+        return await m.answer(tr(u.language, "premium_owner"))
     status = (
-        f"\n\nYour Premium is active until {u.premium_until:%Y-%m-%d} UTC. Buying again adds {settings.premium_days} days."
+        "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
         if u.is_premium and u.premium_until else ""
     )
     await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
@@ -804,20 +804,21 @@ async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
     u = await get_user(session, cb.from_user)
     if u.id == settings.owner_id:
         if cb.message:
-            await cb.message.answer("⭐ Premium is already enabled for the owner account.")
+            await cb.message.answer(tr(u.language, "premium_owner"))
         return
     await bot.send_invoice(
         chat_id=cb.from_user.id,
-        title=f"Orbsat Premium · {settings.premium_days} days",
-        description=f"Up to {settings.premium_alert_limit} active alerts and Ethereum gas alerts for {settings.premium_days} days.",
+        title=tr(u.language, "premium_invoice_title", days=settings.premium_days),
+        description=tr(u.language, "premium_invoice_description", limit=settings.premium_alert_limit, days=settings.premium_days),
         payload=f"premium:{settings.premium_days}",
         currency="XTR",
-        prices=[LabeledPrice(label="Orbsat Premium", amount=settings.premium_price_stars)],
+        prices=[LabeledPrice(label=tr(u.language, "premium_label"), amount=settings.premium_price_stars)],
     )
 
 
 @router.pre_checkout_query()
-async def pre_checkout(q: PreCheckoutQuery):
+async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
+    u = await get_user(session, q.from_user)
     valid_invoice = (
         q.invoice_payload == f"premium:{settings.premium_days}"
         and q.currency == "XTR"
@@ -826,7 +827,7 @@ async def pre_checkout(q: PreCheckoutQuery):
     if valid_invoice:
         await q.answer(ok=True)
     else:
-        await q.answer(ok=False, error_message="This invoice is no longer valid.")
+        await q.answer(ok=False, error_message=tr(u.language, "invoice_invalid"))
 
 
 @router.message(F.successful_payment)
@@ -850,9 +851,9 @@ async def paid(m: Message, session: AsyncSession):
             .returning(Payment.id)
         )
         if inserted is None:
-            await m.answer("This payment was already recorded; no duplicate action was taken.")
+            await m.answer(tr(u.language, "payment_duplicate_recorded"))
         else:
-            await m.answer(f"Payment recorded but could not be matched to the current Premium offer. No Premium was added. Contact {settings.support_contact} with this payment.")
+            await m.answer(tr(u.language, "payment_mismatch_contact", support=settings.support_contact))
         return
     days = settings.premium_days
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
@@ -867,27 +868,26 @@ async def paid(m: Message, session: AsyncSession):
         .returning(Payment.id)
     )
     if inserted is None:
-        await m.answer("This payment was already processed; Premium was not added twice.")
+        await m.answer(tr(u.language, "payment_duplicate_processed"))
         return
     u.premium_until = expiry
     metrics.PAYMENTS.inc()
     await m.answer(
-        f"Thank you! Premium is active until {u.premium_until:%Y-%m-%d} UTC.",
+        tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d")),
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
 
 @router.message(Command("paysupport"))
-async def cmd_paysupport(m: Message):
-    await m.answer(f"Payment problem or refund request? Message {settings.support_contact} with the date of your payment.")
+async def cmd_paysupport(m: Message, session: AsyncSession):
+    u = await get_user(session, m.from_user)
+    await m.answer(tr(u.language, "payment_support", support=settings.support_contact))
 
 
 @router.message(Command("terms"))
-async def cmd_terms(m: Message):
-    await m.answer(
-        "Prices come from public sources and can be delayed or wrong. Alerts are best-effort and are not "
-        "financial advice. Premium is a digital service paid in Telegram Stars; refunds via /paysupport."
-    )
+async def cmd_terms(m: Message, session: AsyncSession):
+    u = await get_user(session, m.from_user)
+    await m.answer(tr(u.language, "terms_text"))
 
 
 # ---------- Admin ----------
