@@ -112,3 +112,13 @@ def test_claim_create_action_allows_only_first_action_for_prompt():
     assert asyncio.run(claim_create_action(redis, 42, 100, "set")) is False
     assert asyncio.run(claim_create_action(redis, 42, 101, "set")) is True
     assert asyncio.run(claim_create_action(redis, 42, 100, "confirm")) is True
+
+
+def test_csv_export_neutralizes_formula_like_user_text():
+    from app.admin_management import _safe_csv_cell
+
+    assert _safe_csv_cell("=HYPERLINK(\"https://example.invalid\")") == "'=HYPERLINK(\"https://example.invalid\")"
+    assert _safe_csv_cell("  @SUM(A1:A2)") == "'  @SUM(A1:A2)"
+    assert _safe_csv_cell("\t=1+1") == "'\t=1+1"
+    assert _safe_csv_cell("normal username") == "normal username"
+    assert _safe_csv_cell(123456) == 123456
