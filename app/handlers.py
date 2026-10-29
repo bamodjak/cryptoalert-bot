@@ -967,14 +967,43 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     p = await session.scalar(select(Payment).where(Payment.charge_id == charge).with_for_update()) if charge else None
     if not p or p.refunded:
         return await m.answer("Usage: /refund CHARGE_ID (unrefunded payment)")
+    if p.refund_pending:
+        return await m.answer(
+            "This payment already has a refund with an uncertain result. Do not retry it automatically; "
+            "reconcile the transaction with Telegram first."
+        )
+    other_pending = await session.scalar(
+        select(Payment.id).where(
+            Payment.user_id == p.user_id, Payment.refund_pending.is_(True)
+        ).limit(1)
+    )
+    if other_pending:
+        return await m.answer(
+            "Another refund for this user needs reconciliation first. Resolve it before starting another refund."
+        )
     if not p.entitlement_tracked and not allow_legacy:
         return await m.answer(
             "This older/unmatched payment has no Premium entitlement record, so no refund was issued. "
             "Review the account manually first. Explicit override: /refund CHARGE_ID ALLOW_LEGACY "
             "(Premium expiry will remain unchanged)."
         )
-    await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
+
+    # Persist an in-doubt marker before calling Telegram. If the process dies or the
+    # remote call times out, admins can reconcile the charge without blindly retrying.
+    p.refund_pending = True
+    await session.commit()
+    try:
+        await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
+    except Exception:
+        # The API result may be ambiguous; keep refund_pending set and require manual review.
+        await m.answer(
+            f"Refund result for payment #{p.id} could not be confirmed. It is marked for reconciliation; "
+            "do not retry until the Telegram transaction is checked."
+        )
+        return
+
     p.refunded = True
+    p.refund_pending = False
     u = await session.get(User, p.user_id)
     if u and p.entitlement_tracked and p.entitlement_start and p.entitlement_end and u.premium_until:
         now = utcnow()
@@ -989,6 +1018,7 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
                     Payment.user_id == p.user_id,
                     Payment.id != p.id,
                     Payment.refunded.is_(False),
+                    Payment.refund_pending.is_(False),
                     Payment.entitlement_tracked.is_(True),
                     Payment.entitlement_start >= p.entitlement_end,
                 )
@@ -1001,4 +1031,5 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     else:
         note = " This charge has no entitlement ledger; Premium expiry was left unchanged."
     session.add(AdminAudit(admin_id=m.from_user.id, action="stars_refund", target_user_id=p.user_id, details=f"payment_id={p.id}; amount={p.amount}; entitlement_tracked={p.entitlement_tracked}"))
+    await session.commit()
     await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")
