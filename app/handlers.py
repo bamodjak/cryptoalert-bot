@@ -637,7 +637,7 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
         else:
             text = tr(u.language, "no_alerts")
     elif action == "premium":
-        text = premium_copy()
+        text = premium_copy(u.language)
     else:
         return
 
@@ -764,25 +764,20 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
 
 # ---------- Payments (Telegram Stars) ----------
 
-def premium_keyboard() -> InlineKeyboardMarkup:
+def premium_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⭐ Get Premium with Telegram Stars", callback_data="premium:buy")],
-        [InlineKeyboardButton(text="⬅️ Home", callback_data="nav:home")],
+        [InlineKeyboardButton(text=tr(lang, "buy_premium"), callback_data="premium:buy")],
+        [InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home")],
+        [InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")],
     ])
 
 
-def premium_copy() -> str:
+def premium_copy(lang: str = "en") -> str:
     return (
-        "<b>⭐ Choose your plan</b>\n\n"
-        f"<b>FREE · 0 ⭐</b>\n"
-        f"• Up to {settings.free_alert_limit} active alerts\n"
-        "• Core crypto price alerts\n"
-        "• Telegram notifications\n\n"
-        f"<b>PREMIUM · {settings.premium_price_stars} ⭐ / {settings.premium_days} days</b>\n"
-        f"• Up to {settings.premium_alert_limit} active alerts\n"
-        "• Ethereum gas alerts\n"
-        "• Keep using the same account; no subscription website needed\n\n"
-        "Pay securely through Telegram Stars. Alerts are best-effort and market data may be delayed."
+        tr(lang, "premium_title") + "\\n\\n"
+        + tr(lang, "free_plan", free=settings.free_alert_limit) + "\\n\\n"
+        + tr(lang, "premium_plan", stars=settings.premium_price_stars, days=settings.premium_days, premium=settings.premium_alert_limit)
+        + "\\n\\n" + tr(lang, "pay_note")
     )
 
 
@@ -795,7 +790,7 @@ async def cmd_premium(m: Message, session: AsyncSession):
         f"\n\nYour Premium is active until {u.premium_until:%Y-%m-%d} UTC. Buying again adds {settings.premium_days} days."
         if u.is_premium and u.premium_until else ""
     )
-    await m.answer(premium_copy() + status, reply_markup=premium_keyboard())
+    await m.answer(premium_copy() + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.callback_query(F.data == "premium:buy")
