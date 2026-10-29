@@ -192,21 +192,9 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
         return
 
     if state.get("state") == "grant_days":
-        if not raw.isdigit() or not 1 <= int(raw) <= 3650:
-            await m.answer("Enter a whole number from 1 to 3650 days, or /cancel.")
-            return
-        days = int(raw)
         target = state.get("target")
-        if target == "all":
-            ids = list((await session.scalars(select(User.id).order_by(User.id))).all())
-        else:
-            ids = state.get("ids")
-            if not ids:
-                await _set_flow(redis, m.from_user.id, {"state": "grant_ids"})
-                await m.answer("Now send the Telegram IDs, one per line. You can paste multiple IDs, or /cancel.")
-                return
+        # The first message for a multi-user grant is a pasted list of IDs.
         if target == "ids" and not state.get("ids"):
-            # First message after choosing Grant is the ID list, not days.
             parsed = []
             invalid = []
             for line in raw.splitlines():
@@ -223,7 +211,15 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
             await _set_flow(redis, m.from_user.id, {"state": "grant_days", "target": "ids", "ids": sorted(set(parsed)), "invalid": invalid})
             await m.answer(f"Received {len(set(parsed))} unique ID(s). Now send how many Premium days to add (1–3650).")
             return
-        existing = list((await session.scalars(select(User).where(User.id.in_(ids)))).all()) if ids else []
+        if not raw.isdigit() or not 1 <= int(raw) <= 3650:
+            await m.answer("Enter a whole number from 1 to 3650 days, or /cancel.")
+            return
+        days = int(raw)
+        if target == "all":
+            ids = list((await session.scalars(select(User.id).order_by(User.id))).all())
+        else:
+            ids = state.get("ids", [])
+        existing = list((await session.scalars(select(User.id).where(User.id.in_(ids)))).all()) if ids else []
         found_ids = {u.id for u in existing}
         missing = sorted(set(ids) - found_ids)
         payload = {"ids": sorted(found_ids), "days": days, "missing": missing, "invalid": state.get("invalid", [])}
