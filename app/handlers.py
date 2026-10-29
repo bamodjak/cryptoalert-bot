@@ -173,7 +173,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 await m.answer(
                     "This Premium invitation was created for a different Telegram account. "
                     "Please switch to the account whose ID received the invitation, or contact the sender.",
-                    reply_markup=nav_keyboard(u.id, show_back=False),
+                    reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
                 )
                 return
             if invite.recipient_started_at is None:
@@ -254,7 +254,7 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
         f"{tr(u.language, 'friends_joined', count=u.referrals_count)}"
     )
     if cb.message:
-        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, show_back=True))
+        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
     await cb.answer(tr(u.language, "affiliation_ready"))
 
 
