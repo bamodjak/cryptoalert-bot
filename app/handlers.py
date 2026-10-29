@@ -1033,3 +1033,87 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     session.add(AdminAudit(admin_id=m.from_user.id, action="stars_refund", target_user_id=p.user_id, details=f"payment_id={p.id}; amount={p.amount}; entitlement_tracked={p.entitlement_tracked}"))
     await session.commit()
     await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")
+
+
+@admin.message(Command("refundpending"))
+async def pending_refunds_cmd(m: Message, session: AsyncSession):
+    rows = (await session.scalars(
+        select(Payment)
+        .where(Payment.refund_pending.is_(True))
+        .order_by(Payment.created_at.asc())
+        .limit(25)
+    )).all()
+    if not rows:
+        await m.answer("No Stars refunds need reconciliation.")
+        return
+    lines = [
+        f"Payment #{p.id} · user {p.user_id} · {p.amount} Stars · charge {p.charge_id}"
+        for p in rows
+    ]
+    await m.answer(
+        "<b>Refunds requiring reconciliation</b>\n"
+        + "\n".join(lines)
+        + "\n\nCheck each charge in Telegram before using /refundresolve CHARGE_ID REFUNDED or NOT_REFUNDED."
+    )
+
+
+@admin.message(Command("refundresolve"))
+async def resolve_pending_refund_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    parts = (command.args or "").split()
+    if len(parts) != 2 or parts[1].upper() not in {"REFUNDED", "NOT_REFUNDED"}:
+        await m.answer("Usage: /refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED — verify the transaction with Telegram first.")
+        return
+    charge, outcome = parts[0], parts[1].upper()
+    payment = await session.scalar(
+        select(Payment).where(Payment.charge_id == charge).with_for_update()
+    )
+    if not payment or not payment.refund_pending or payment.refunded:
+        await m.answer("No unresolved refund exists for that charge.")
+        return
+    if outcome == "NOT_REFUNDED":
+        payment.refund_pending = False
+        session.add(AdminAudit(
+            admin_id=m.from_user.id,
+            action="stars_refund_reconciled",
+            target_user_id=payment.user_id,
+            details=f"payment_id={payment.id}; outcome=not_refunded",
+        ))
+        await session.commit()
+        await m.answer("Marked as not refunded. You may retry /refund after confirming the charge state.")
+        return
+
+    payment.refunded = True
+    payment.refund_pending = False
+    user = await session.get(User, payment.user_id)
+    note = " Premium expiry left unchanged."
+    if user and payment.entitlement_tracked and payment.entitlement_start and payment.entitlement_end and user.premium_until:
+        now = utcnow()
+        remaining = refundable_unused_duration(
+            payment.entitlement_start, payment.entitlement_end, user.premium_until, now
+        )
+        if remaining:
+            user.premium_until = max(now, user.premium_until - remaining)
+            future_payments = (await session.scalars(
+                select(Payment)
+                .where(
+                    Payment.user_id == payment.user_id,
+                    Payment.id != payment.id,
+                    Payment.refunded.is_(False),
+                    Payment.refund_pending.is_(False),
+                    Payment.entitlement_tracked.is_(True),
+                    Payment.entitlement_start >= payment.entitlement_end,
+                )
+                .with_for_update()
+            )).all()
+            for future_payment in future_payments:
+                future_payment.entitlement_start -= remaining
+                future_payment.entitlement_end -= remaining
+        note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h."
+    session.add(AdminAudit(
+        admin_id=m.from_user.id,
+        action="stars_refund_reconciled",
+        target_user_id=payment.user_id,
+        details=f"payment_id={payment.id}; outcome=refunded",
+    ))
+    await session.commit()
+    await m.answer(f"Marked payment #{payment.id} as refunded after manual verification.{note}")
