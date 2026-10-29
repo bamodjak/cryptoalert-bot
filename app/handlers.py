@@ -443,9 +443,20 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "custom_price"), callback_data=f"create:customprice:{symbol}:{direction}")],
             [InlineKeyboardButton(text=tr(u.language, "back_short"), callback_data=f"create:coin:{symbol}")],
         ]
-        await edit_if_changed(cb.message,
-            f"<b>{symbol.upper()}</b> {tr(u.language, 'target_prompt')}"
-            ,
+        try:
+            coin = await prices.resolve(symbol)
+            current = (await prices.prices([coin.id], allow_stale=True)).get(coin.id) if coin else None
+        except PriceError:
+            current = None
+        prompt_key = "target_prompt" if current is not None else "target_prompt_no_price"
+        prompt = tr(
+            u.language,
+            prompt_key,
+            **({"current_price": fmt_usd(current)} if current is not None else {}),
+        )
+        await edit_if_changed(
+            cb.message,
+            f"<b>{symbol.upper()}</b> {prompt}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
         )
         return
