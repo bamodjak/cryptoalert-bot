@@ -28,6 +28,7 @@ Admin commands:
 - `/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]` — record a pending payment (cash, in-person cash, Stars, BaridiMob, CCP, or bank transfer)
 - `/pendingpay` — list pending manual payments; `/verify PAYMENT_ID` / `/rejectpay PAYMENT_ID` — verify or reject pending manual payments
 - `/revenue` — show unrefunded Stars and verified manual totals by currency
+- `/refundpending` — list Stars refunds with an uncertain API result; `/refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED` records the outcome after checking Telegram
 - `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
 - `/broadcast announcement text` — preview and explicitly confirm before sending
 
