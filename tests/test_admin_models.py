@@ -79,6 +79,14 @@ def test_stars_payment_has_entitlement_tracking_fields():
 
 
 
+def test_payment_model_tracks_uncertain_refunds():
+    from app.db import Payment
+
+    column = Payment.__table__.c.refund_pending
+    assert column.nullable is False
+    assert column.default.arg is False
+
+
 def test_refund_calculation_only_removes_unused_interval():
     from datetime import datetime, timedelta, timezone
     from app.entitlements import refundable_unused_duration
