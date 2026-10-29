@@ -17,7 +17,6 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .config import settings
 from .db import User, Session
 from .i18n import tr
 from .parsing import fmt_usd
@@ -45,7 +44,7 @@ COINS = (
     ("tether", "USDT", "Tether", ""),
     ("usd-coin", "USDC", "USDC", "usdcusdt"),
 )
-PAIR_TO_COIN = {pair.upper(): (coin_id, symbol, name) for coin_id, symbol, name, pair in COINS}
+PAIR_TO_COIN = {pair.upper(): (coin_id, symbol, name) for coin_id, symbol, name, pair in COINS if pair}
 DASHBOARDS_KEY = "live:dashboards"
 DASHBOARD_REFRESH_SECONDS = 3
 PRICE_TTL_SECONDS = 30
@@ -77,6 +76,8 @@ def format_dashboard(prices: dict[str, tuple[float, float]], language: str, now:
 
 @router.message(Command("live"))
 async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices: PriceService):
+    if message.chat.type != "private":
+        return await message.answer(tr("en", "live_private_only"))
     user = await session.get(User, message.from_user.id)
     if user is None:
         return await message.answer(tr("en", "live_start_hint"))
