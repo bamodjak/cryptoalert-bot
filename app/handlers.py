@@ -595,10 +595,11 @@ async def cb_delete_alert(cb: CallbackQuery, session: AsyncSession):
         alert_id = int((cb.data or "").split(":", 1)[1])
     except (ValueError, IndexError):
         return
-    result = await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.user_id == cb.from_user.id))
+    u = await get_user(session, cb.from_user)
+    result = await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.user_id == u.id))
     if cb.message:
-        message = "✅ Alert deleted." if result.rowcount else "That alert was already removed."
-        await cb.message.edit_text(message, reply_markup=nav_keyboard(cb.from_user.id))
+        message = tr(u.language, "deleted") if result.rowcount else tr(u.language, "already_removed")
+        await cb.message.edit_text(message, reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.callback_query(F.data.startswith("dash:"))
