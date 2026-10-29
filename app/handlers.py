@@ -298,14 +298,11 @@ async def cmd_alert(m: Message, command: CommandObject, session: AsyncSession, p
     alert = Alert(user_id=u.id, kind="price", coin_id=coin.id, symbol=coin.symbol.upper(), op=op, target=target)
     session.add(alert)
     await session.flush()
-    now = ""
+    px = None
     try:
         px = (await prices.prices([coin.id])).get(coin.id)
-        if px is not None:
-            now = f" (now {fmt_usd(px)})"
     except PriceError:
         pass
-    word = "above" if op == ">" else "below"
     await m.answer(
         tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if op == ">" else "below"), target=fmt_usd(target)) + (f"\n{tr(u.language, 'current_price')}: {fmt_usd(px)}" if 'px' in locals() and px is not None else ""),
         reply_markup=nav_keyboard(u.id, lang=u.language),
