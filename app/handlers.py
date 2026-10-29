@@ -30,10 +30,10 @@ admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
 
 HELP = (
-    "<b>Orbsat Crypto Alerts</b>\n"
-    "Smart price alerts, without command syntax. Choose a coin, pick a target, and we will notify you.\n\n"
-    "🔔 <b>Create an alert</b> from the button below.\n"
-    "📈 Check BTC, ⛽ Ethereum gas, manage alerts, or explore Premium from the menu.\n\n"
+    "<b>Welcome to Orbsat Crypto Alerts 👋</b>\n"
+    "Your crypto alerts, made simple. No command syntax to learn — just tap through the options.\n\n"
+    "🔔 <b>Create an alert</b> and choose a coin, direction, and target.\n"
+    "📊 Check BTC, manage alerts, invite friends, or compare plans below.\n\n"
     f"Free: up to {settings.free_alert_limit} active alerts. Premium: {settings.premium_alert_limit} alerts + Ethereum gas alerts for "
     f"{settings.premium_price_stars} ⭐ / {settings.premium_days} days.\n\n"
     "<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>"
@@ -314,7 +314,9 @@ def create_coin_keyboard(user_id: int) -> InlineKeyboardMarkup:
     coins = [
         ("₿ Bitcoin", "btc"), ("Ξ Ethereum", "eth"), ("◎ Solana", "sol"),
         ("BNB", "bnb"), ("XRP", "xrp"), ("DOGE", "doge"),
-        ("TON", "ton"), ("TRX", "trx"), ("AVAX", "avax"),
+        ("ADA", "ada"), ("TON", "ton"), ("TRX", "trx"),
+        ("AVAX", "avax"), ("DOT", "dot"), ("LINK", "link"),
+        ("LTC", "ltc"), ("USDT", "usdt"), ("USDC", "usdc"),
     ]
     rows = [[InlineKeyboardButton(text=label, callback_data=f"create:coin:{symbol}") for label, symbol in coins[i:i + 3]] for i in range(0, len(coins), 3)]
     rows.append([InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")])
@@ -451,15 +453,15 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
         else:
             text = "You have no active alerts yet. Tap below to create your first alert."
     elif action == "premium":
-        text = (
-            f"⭐ Premium: {settings.premium_price_stars} Stars for {settings.premium_days} days.\n"
-            f"Includes up to {settings.premium_alert_limit} alerts and Ethereum gas alerts.\n"
-            "Use /premium to purchase through Telegram."
-        )
+        text = premium_copy()
     else:
         return
 
-    keyboard = alerts_keyboard(rows, u.id) if action == "alerts" and "rows" in locals() else nav_keyboard(u.id)
+    keyboard = (
+        alerts_keyboard(rows, u.id) if action == "alerts" and "rows" in locals()
+        else premium_keyboard() if action == "premium"
+        else nav_keyboard(u.id)
+    )
     try:
         await cb.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest as exc:
@@ -578,19 +580,55 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
 
 # ---------- Payments (Telegram Stars) ----------
 
+def premium_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⭐ Get Premium with Telegram Stars", callback_data="premium:buy")],
+        [InlineKeyboardButton(text="⬅️ Home", callback_data="nav:home")],
+    ])
+
+
+def premium_copy() -> str:
+    return (
+        "<b>⭐ Choose your plan</b>\n\n"
+        f"<b>FREE · 0 ⭐</b>\n"
+        f"• Up to {settings.free_alert_limit} active alerts\n"
+        "• Core crypto price alerts\n"
+        "• Telegram notifications\n\n"
+        f"<b>PREMIUM · {settings.premium_price_stars} ⭐ / {settings.premium_days} days</b>\n"
+        f"• Up to {settings.premium_alert_limit} active alerts\n"
+        "• Ethereum gas alerts\n"
+        "• Keep using the same account; no subscription website needed\n\n"
+        "Pay securely through Telegram Stars. Alerts are best-effort and market data may be delayed."
+    )
+
+
 @router.message(Command("premium"))
 async def cmd_premium(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
     if u.id == settings.owner_id:
-        return await m.answer("Owner account: Premium is enabled for free.")
-    if u.is_premium:
-        await m.answer(f"Premium is active until {u.premium_until:%Y-%m-%d} UTC. Paying again adds {settings.premium_days} days.")
-    await m.answer_invoice(
-        title=f"Premium · {settings.premium_days} days",
-        description=f"{settings.premium_alert_limit} alerts and Ethereum gas alerts for {settings.premium_days} days.",
+        return await m.answer("⭐ Premium is enabled for the owner account at no charge.")
+    status = (
+        f"\n\nYour Premium is active until {u.premium_until:%Y-%m-%d} UTC. Buying again adds {settings.premium_days} days."
+        if u.is_premium and u.premium_until else ""
+    )
+    await m.answer(premium_copy() + status, reply_markup=premium_keyboard())
+
+
+@router.callback_query(F.data == "premium:buy")
+async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+    await cb.answer()
+    u = await get_user(session, cb.from_user)
+    if u.id == settings.owner_id:
+        if cb.message:
+            await cb.message.answer("⭐ Premium is already enabled for the owner account.")
+        return
+    await bot.send_invoice(
+        chat_id=cb.from_user.id,
+        title=f"Orbsat Premium · {settings.premium_days} days",
+        description=f"Up to {settings.premium_alert_limit} active alerts and Ethereum gas alerts for {settings.premium_days} days.",
         payload=f"premium:{settings.premium_days}",
         currency="XTR",
-        prices=[LabeledPrice(label="Premium", amount=settings.premium_price_stars)],
+        prices=[LabeledPrice(label="Orbsat Premium", amount=settings.premium_price_stars)],
     )
 
 

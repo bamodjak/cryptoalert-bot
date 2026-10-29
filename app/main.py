@@ -95,7 +95,21 @@ def build_web_app(redis: Redis) -> web.Application:
             headers=CORS_HEADERS,
         )
 
+    async def root(_: web.Request) -> web.Response:
+        # Render probes the service root by default. Return a lightweight 200
+        # rather than a 404 so deploy checks and humans see a useful landing point.
+        return web.json_response(
+            {
+                "service": "Orbsat Crypto Alerts",
+                "status": "running",
+                "telegram": f"https://t.me/{settings.bot_username}",
+                "health": "/health",
+            },
+            headers=CORS_HEADERS,
+        )
+
     app = web.Application()
+    app.router.add_get("/", root)
     app.router.add_get("/health", health)
     app.router.add_get("/metrics", metrics_view)
     app.router.add_get("/stats.json", stats_json)
