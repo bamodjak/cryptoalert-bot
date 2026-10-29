@@ -557,7 +557,11 @@ async def receive_custom_alert_value(
     else:
         if (direction == "up" and target <= current) or (direction == "down" and target >= current):
             relation = tr(u.language, "higher_than" if direction == "up" else "lower_than")
-            await m.answer(f"For an alert when {symbol.upper()} {'rises' if direction == 'up' else 'falls'}, the target must be {relation} the current price ({fmt_usd(current)}). Enter another value or /cancel.")
+            await m.answer(tr(
+                u.language, "target_direction_invalid", symbol=symbol.upper(),
+                direction=tr(u.language, "rises_word" if direction == "up" else "falls_word"),
+                relation=relation, current=fmt_usd(current),
+            ))
             return
         label = tr(u.language, "exact_target")
     op = ">" if direction == "up" else "<"
@@ -578,9 +582,10 @@ async def receive_custom_alert_value(
 
 
 @router.message(Command("cancel"))
-async def cmd_cancel_alert(m: Message, state: FSMContext):
+async def cmd_cancel_alert(m: Message, state: FSMContext, session: AsyncSession):
     await state.clear()
-    await m.answer("Custom alert cancelled.", reply_markup=nav_keyboard(m.from_user.id))
+    u = await get_user(session, m.from_user)
+    await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.callback_query(F.data.startswith("alertdel:"))
