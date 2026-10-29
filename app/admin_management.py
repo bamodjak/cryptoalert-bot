@@ -18,8 +18,9 @@ from .config import settings
 from .db import AdminAudit, Payment, PremiumGrant, PremiumInvite, User, utcnow
 
 router = Router(name="admin_management")
-router.callback_query.filter(F.from_user.id.in_(settings.admin_id_set))
+router.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
 router.message.filter(F.from_user.id.in_(settings.admin_id_set))
+router.message.filter(F.chat.type == "private")
 
 PAGE_SIZE = 8
 FLOW_TTL = 900
