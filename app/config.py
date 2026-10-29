@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     bot_token: SecretStr
     bot_username: str = "Orbsat16bot"
+    update_bot_profile_on_startup: bool = False  # opt in only when intentionally changing profile metadata
     admin_ids: str = ""  # comma-separated Telegram user ids
     owner_id: int = 0  # numeric Telegram user ID; owner receives free Premium
 
