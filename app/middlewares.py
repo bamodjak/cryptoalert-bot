@@ -1,13 +1,50 @@
+import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, TelegramObject, Update
+from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 from redis.asyncio import Redis
 
 from .config import settings
 from .db import Session, User
 
+log = logging.getLogger(__name__)
 KILL_KEY = "bot:killed"
+
+
+def safe_callback_action(callback_data: str | None) -> str:
+    """Return only the callback route/action; omit IDs and other dynamic payloads."""
+    parts = (callback_data or "").split(":")
+    if not parts or not parts[0]:
+        return "unknown"
+    prefix = parts[0]
+    if prefix == "admin" and len(parts) > 2 and parts[1] == "broadcast" and parts[2] in {"confirm", "cancel"}:
+        return f"admin:broadcast:{parts[2]}"
+    if prefix == "um" and len(parts) > 2 and parts[1] == "export" and parts[2] in {"users", "invites"}:
+        return f"um:export:{parts[2]}"
+    if prefix in {"create", "dash", "nav", "lang", "admin", "user", "premium", "um"}:
+        return ":".join(parts[:2]) if len(parts) > 1 and parts[1] else prefix
+    if prefix == "alertdel":
+        return "alertdel:delete"
+    if prefix in {"invite", "grant", "revoke", "suspend", "unsuspend"}:
+        return prefix
+    return prefix
+
+
+class CallbackTraceMiddleware(BaseMiddleware):
+    """Trace callback routes and handler outcomes without logging user IDs or message text."""
+
+    async def __call__(self, handler, event: CallbackQuery, data: dict) -> Any:
+        action = safe_callback_action(event.data)
+        callback_id = event.id
+        log.info("telegram_callback received id=%s action=%s", callback_id, action)
+        try:
+            result = await handler(event, data)
+        except Exception:
+            log.exception("telegram_callback failed id=%s action=%s", callback_id, action)
+            raise
+        log.info("telegram_callback completed id=%s action=%s", callback_id, action)
+        return result
 
 
 class KillSwitchMiddleware(BaseMiddleware):
@@ -38,6 +75,8 @@ class KillSwitchMiddleware(BaseMiddleware):
                     await event.pre_checkout_query.answer(ok=False, error_message="Paused for maintenance. Try again shortly.")
                 elif event.message:
                     await event.message.answer("Paused for maintenance. Back shortly.")
+                elif event.callback_query:
+                    await event.callback_query.answer("Paused for maintenance. Try again shortly.", show_alert=True)
             return None
         return await handler(event, data)
 
