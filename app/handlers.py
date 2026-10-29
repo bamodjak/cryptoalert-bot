@@ -36,6 +36,8 @@ class AlertCustomInput(StatesGroup):
 router = Router(name="user")
 admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
+admin.message.filter(F.chat.type == "private")
+admin.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
 
 HELP = (
     "<b>Welcome to Orbsat Crypto Alerts 👋</b>\n"
