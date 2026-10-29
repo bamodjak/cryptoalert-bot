@@ -5,7 +5,7 @@
 **User experience**
 - Guided alert setup for 15 assets: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, TON, TRX, AVAX, DOT, LINK, LTC, USDT and USDC
 - One-tap current BTC price, Ethereum gas, alert list and inline alert deletion
-- Clear onboarding, compact Telegram command menu, and branded bot name/profile descriptions updated on startup
+- Clear onboarding, compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts and Ethereum gas alerts
 - Referral links and join counts, payment support, service terms and concise notification copy
 - Price feed uses CoinGecko with CoinPaprika fallback for supported assets; values are cached in Redis
