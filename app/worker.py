@@ -20,6 +20,15 @@ log = logging.getLogger(__name__)
 last_success = 0.0
 
 
+def should_pause_alert(is_premium: bool, kind: str, price_index: int, free_limit: int) -> bool:
+    """Return whether an active alert exceeds the user's current entitlement."""
+    if is_premium:
+        return False
+    if kind == "gas":
+        return True
+    return price_index > free_limit
+
+
 async def _send(bot: Bot, chat_id: int, text: str) -> bool | None:
     """True sent, False user blocked the bot, None transient failure."""
     for _ in range(2):
@@ -63,13 +72,11 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
         eligible_rows = []
         for alert, language, premium_until, user_id in rows:
             premium = user_id == settings.owner_id or (premium_until is not None and premium_until > now)
-            if premium:
-                should_pause = False
-            elif alert.kind == "gas":
-                should_pause = True
-            else:
+            if alert.kind == "price" and not premium:
                 price_counts[user_id] = price_counts.get(user_id, 0) + 1
-                should_pause = price_counts[user_id] > settings.free_alert_limit
+            should_pause = should_pause_alert(
+                premium, alert.kind, price_counts.get(user_id, 0), settings.free_alert_limit
+            )
             if alert.entitlement_paused != should_pause:
                 alert.entitlement_paused = should_pause
             if not should_pause:
