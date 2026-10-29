@@ -109,6 +109,8 @@ async def get_user(
             .values(
                 id=tg_user.id,
                 username=tg_user.username,
+                first_name=tg_user.first_name,
+                last_name=tg_user.last_name,
                 referred_by=ref_id,
                 affiliation_shares=0,
                 referrals_count=0,
@@ -136,6 +138,8 @@ async def get_user(
 
     u.blocked = False
     u.username = tg_user.username
+    u.first_name = tg_user.first_name
+    u.last_name = tg_user.last_name
     await session.flush()
     return u
 
