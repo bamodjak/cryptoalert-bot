@@ -12,6 +12,27 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
+
+# CoinPaprika identifiers for coins supported by the bot. This provider is used
+# only when CoinGecko is rate-limited or unavailable.
+PAPRIKA_IDS = {
+    "bitcoin": "btc-bitcoin",
+    "ethereum": "eth-ethereum",
+    "solana": "sol-solana",
+    "binancecoin": "bnb-binance-coin",
+    "ripple": "xrp-xrp",
+    "cardano": "ada-cardano",
+    "dogecoin": "doge-dogecoin",
+    "the-open-network": "ton-toncoin",
+    "tron": "trx-tron",
+    "avalanche-2": "avax-avalanche",
+    "polkadot": "dot-polkadot",
+    "chainlink": "link-chainlink",
+    "litecoin": "ltc-litecoin",
+    "tether": "usdt-tether",
+    "usd-coin": "usdc-usd-coin",
+}
+
 KNOWN = {
     "btc": ("bitcoin", "Bitcoin"), "eth": ("ethereum", "Ethereum"), "sol": ("solana", "Solana"),
     "bnb": ("binancecoin", "BNB"), "xrp": ("ripple", "XRP"), "ada": ("cardano", "Cardano"),
@@ -79,6 +100,26 @@ class PriceService:
         await self.redis.set(key, "", ex=3600)
         return None
 
+
+    async def _paprika_price(self, coin_id: str) -> float | None:
+        """Fetch one supported coin from CoinPaprika as a rate-limit fallback."""
+        ticker_id = PAPRIKA_IDS.get(coin_id)
+        if not ticker_id:
+            return None
+        try:
+            async with self.http.get(
+                f"https://api.coinpaprika.com/v1/tickers/{ticker_id}",
+                params={"quotes": "USD"},
+                headers={"accept": "application/json"},
+            ) as response:
+                response.raise_for_status()
+                payload = await response.json()
+            value = payload.get("quotes", {}).get("USD", {}).get("price")
+            return float(value) if value is not None else None
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError) as exc:
+            log.warning("CoinPaprika fallback failed for %s: %s", coin_id, type(exc).__name__)
+            return None
+
     async def prices(self, ids: list[str]) -> dict[str, float]:
         ids = sorted(set(ids))
         if not ids:
@@ -88,7 +129,16 @@ class PriceService:
         missing = [i for i in ids if i not in out]
         for n in range(0, len(missing), 100):
             chunk = missing[n:n + 100]
-            data = await self._get("/simple/price", {"ids": ",".join(chunk), "vs_currencies": "usd"})
+            try:
+                data = await self._get("/simple/price", {"ids": ",".join(chunk), "vs_currencies": "usd"})
+            except PriceError:
+                # CoinGecko frequently rate-limits unauthenticated requests. Use
+                # a second public provider for known coins so alerts keep working.
+                data = {}
+                for cid in chunk:
+                    fallback = await self._paprika_price(cid)
+                    if fallback is not None:
+                        data[cid] = {"usd": fallback}
             pipe = self.redis.pipeline()
             for cid, v in data.items():
                 if "usd" in v:
