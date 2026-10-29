@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from . import metrics
 from .config import settings
 from .db import Alert, Session, User, utcnow
+from .i18n import tr
 from .middlewares import KILL_KEY
 from .parsing import fmt_gwei, fmt_usd
 from .prices import PriceError, PriceService
@@ -35,14 +36,26 @@ async def _send(bot: Bot, chat_id: int, text: str) -> bool | None:
     return None
 
 
+def _alert_message(kind: str, symbol: str | None, value: float, target: float, alert_id: int, op: str, language: str | None) -> str:
+    if kind == "gas":
+        return tr(language, "gas_alert", value=fmt_gwei(value), target=target, id=alert_id)
+    relation = tr(language, "above" if op == ">" else "below")
+    return tr(
+        language, "price_alert", symbol=symbol or "CRYPTO", value=fmt_usd(value),
+        relation=relation, target=fmt_usd(target), id=alert_id,
+    )
+
+
 async def check_once(bot: Bot, prices: PriceService) -> None:
     global last_success
     async with Session() as s:
-        alerts = (await s.scalars(
-            select(Alert)
+        rows = (await s.execute(
+            select(Alert, User.language)
             .join(User, User.id == Alert.user_id)
             .where(Alert.active.is_(True), User.suspended.is_(False))
         )).all()
+    alerts = [row[0] for row in rows]
+    languages = {alert.user_id: language for alert, language in rows}
     if not alerts:
         last_success = time.time()
         metrics.LAST_CHECK.set(last_success)
@@ -65,11 +78,7 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
             continue
         if not (value > a.target if a.op == ">" else value < a.target):
             continue
-        word = "above" if a.op == ">" else "below"
-        if a.kind == "gas":
-            text = f"⛽ Gas is {fmt_gwei(value)} gwei, below your {a.target:g} gwei target. (alert #{a.id})"
-        else:
-            text = f"🔔 {a.symbol} is {fmt_usd(value)}, {word} your {fmt_usd(a.target)} target. (alert #{a.id})"
+        text = _alert_message(a.kind, a.symbol, value, a.target, a.id, a.op, languages.get(a.user_id))
         ok = await _send(bot, a.user_id, text)
         if ok:
             fired.append(a.id)

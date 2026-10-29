@@ -173,7 +173,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 await m.answer(
                     "This Premium invitation was created for a different Telegram account. "
                     "Please switch to the account whose ID received the invitation, or contact the sender.",
-                    reply_markup=nav_keyboard(u.id, show_back=False),
+                    reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
                 )
                 return
             if invite.recipient_started_at is None:
@@ -248,30 +248,30 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
     await session.flush()
     ref_link = f"https://t.me/{settings.bot_username}?start=ref_{u.id}"
     text = (
-        f"🔗 <b>Your Affiliation Link</b>\n\n"
+        f"{tr(u.language, 'affiliation_title')}\n\n"
         f"<code>{ref_link}</code>\n\n"
-        f"• <b>Affiliation shared:</b> {u.affiliation_shares}\n"
-        f"• <b>Friends joined:</b> {u.referrals_count}"
+        f"{tr(u.language, 'affiliation_shared', count=u.affiliation_shares)}\n"
+        f"{tr(u.language, 'friends_joined', count=u.referrals_count)}"
     )
     if cb.message:
-        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, show_back=True))
-    await cb.answer("Affiliation link ready!")
+        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
+    await cb.answer(tr(u.language, "affiliation_ready"))
 
 
 @router.message(Command("price"))
 async def cmd_price(m: Message, command: CommandObject, session: AsyncSession, prices: PriceService):
     u = await get_user(session, m.from_user)
     if not command.args:
-        return await m.answer("Usage: /price btc", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "price_usage"), reply_markup=nav_keyboard(u.id, lang=u.language))
     try:
         coin = await prices.resolve(command.args.split()[0])
         if not coin:
-            return await m.answer("I don't know that coin. Try its ticker, like btc or sol.", reply_markup=nav_keyboard(u.id, lang=u.language))
+            return await m.answer(tr(u.language, "unknown_coin"), reply_markup=nav_keyboard(u.id, lang=u.language))
         px = (await prices.prices([coin.id])).get(coin.id)
     except PriceError:
-        return await m.answer("The price source is busy. Try again in a minute.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "price_busy"), reply_markup=nav_keyboard(u.id, lang=u.language))
     if px is None:
-        return await m.answer("No price for that coin right now.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "no_price"), reply_markup=nav_keyboard(u.id, lang=u.language))
     await m.answer(
         f"<b>{coin.symbol.upper()}</b> ({html.escape(coin.name)}): {fmt_usd(px)}",
         reply_markup=nav_keyboard(u.id, lang=u.language),
@@ -284,30 +284,27 @@ async def cmd_alert(m: Message, command: CommandObject, session: AsyncSession, p
     try:
         sym, op, target = parse_alert(command.args or "")
     except ValueError:
-        return await m.answer("Usage: /alert btc &gt; 70000  or  /alert eth below 2.5k", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "alert_usage"), reply_markup=nav_keyboard(u.id, lang=u.language))
     limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
     if await active_count(session, u.id) >= limit:
-        extra = "" if u.is_premium else f" /premium raises it to {settings.premium_alert_limit}."
-        return await m.answer(f"You're at your limit of {limit} alerts.{extra}", reply_markup=nav_keyboard(u.id, lang=u.language))
+        extra = "" if u.is_premium else "\n" + tr(u.language, "premium_more")
+        return await m.answer(tr(u.language, "limit_reached", limit=limit) + extra, reply_markup=nav_keyboard(u.id, lang=u.language))
     try:
         coin = await prices.resolve(sym)
     except PriceError:
-        return await m.answer("The price source is busy. Try again in a minute.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "price_busy"), reply_markup=nav_keyboard(u.id, lang=u.language))
     if not coin:
-        return await m.answer("I don't know that coin. Try its ticker, like btc or sol.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "unknown_coin"), reply_markup=nav_keyboard(u.id, lang=u.language))
     alert = Alert(user_id=u.id, kind="price", coin_id=coin.id, symbol=coin.symbol.upper(), op=op, target=target)
     session.add(alert)
     await session.flush()
-    now = ""
+    px = None
     try:
         px = (await prices.prices([coin.id])).get(coin.id)
-        if px is not None:
-            now = f" (now {fmt_usd(px)})"
     except PriceError:
         pass
-    word = "above" if op == ">" else "below"
     await m.answer(
-        f"تنبيه رقم {alert.id}: {alert.symbol} {word} {fmt_usd(target)}{now}." if u.language == "ar" else f"Alert #{alert.id} set: {alert.symbol} {word} {fmt_usd(target)}{now}.",
+        tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if op == ">" else "below"), target=fmt_usd(target)) + (f"\n{tr(u.language, 'current_price')}: {fmt_usd(px)}" if 'px' in locals() and px is not None else ""),
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
@@ -318,25 +315,25 @@ async def cmd_gas(m: Message, session: AsyncSession, prices: PriceService):
     try:
         g = await prices.gas_gwei()
     except PriceError:
-        return await m.answer("The gas source is busy. Try again in a minute.", reply_markup=nav_keyboard(u.id, lang=u.language))
-    await m.answer(f"Ethereum gas: <b>{fmt_gwei(g)} gwei</b>", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "gas_busy"), reply_markup=nav_keyboard(u.id, lang=u.language))
+    await m.answer(tr(u.language, "gas_price", value=fmt_gwei(g)), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.message(Command("gasalert"))
 async def cmd_gasalert(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user)
     if not u.is_premium:
-        return await m.answer("Gas alerts are a Premium feature. /premium", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "gas_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
     try:
         target = parse_number((command.args or "").replace("gwei", ""))
     except ValueError:
-        return await m.answer("Usage: /gasalert 0.5  (alerts when gas drops below 0.5 gwei)", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "gasalert_usage"), reply_markup=nav_keyboard(u.id, lang=u.language))
     if await active_count(session, u.id) >= settings.premium_alert_limit:
-        return await m.answer(f"You're at your limit of {settings.premium_alert_limit} alerts.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "limit_reached", limit=settings.premium_alert_limit), reply_markup=nav_keyboard(u.id, lang=u.language))
     alert = Alert(user_id=u.id, kind="gas", symbol="GAS", op="<", target=target)
     session.add(alert)
     await session.flush()
-    await m.answer(f"Alert #{alert.id} set: gas below {target:g} gwei.", reply_markup=nav_keyboard(u.id, lang=u.language))
+    await m.answer(tr(u.language, "gas_alert_created", id=alert.id, target=target), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.message(Command("alerts"))
@@ -346,14 +343,14 @@ async def cmd_alerts(m: Message, session: AsyncSession):
         select(Alert).where(Alert.user_id == m.from_user.id, Alert.active.is_(True)).order_by(Alert.id)
     )).all()
     if not rows:
-        return await m.answer("No active alerts. Try /alert btc &gt; 70000", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "no_active_alerts_command"), reply_markup=nav_keyboard(u.id, lang=u.language))
     lines = []
     for a in rows:
-        word = "above" if a.op == ">" else "below"
+        word = tr(u.language, "above" if a.op == ">" else "below")
         val = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
         lines.append(f"#{a.id} {a.symbol} {word} {val}")
     await m.answer(
-        "🔔 <b>Your active alerts</b>\n" + "\n".join(lines) + "\n\nTap an alert below to remove it.",
+        tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
         reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
     )
 
@@ -364,10 +361,10 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
     try:
         aid = int((command.args or "").strip().lstrip("#"))
     except ValueError:
-        return await m.answer("Usage: /del 12", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "delete_usage"), reply_markup=nav_keyboard(u.id, lang=u.language))
     res = await session.execute(delete(Alert).where(Alert.id == aid, Alert.user_id == m.from_user.id))
     await m.answer(
-        f"Deleted #{aid}." if res.rowcount else "No alert with that id.",
+        tr(u.language, "alert_deleted", id=aid) if res.rowcount else tr(u.language, "alert_not_found"),
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
@@ -428,7 +425,6 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "custom_price"), callback_data=f"create:customprice:{symbol}:{direction}")],
             [InlineKeyboardButton(text=tr(u.language, "back_short"), callback_data=f"create:coin:{symbol}")],
         ]
-        word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
             f"<b>{symbol.upper()}</b> {tr(u.language, 'target_prompt')}"
             ,
@@ -465,7 +461,7 @@ async def cb_create_alert(
         if await active_count(session, u.id) >= limit:
             await state.clear()
             await cb.message.edit_text(
-                tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\nPremium unlocks more alerts and Ethereum gas alerts."),
+                tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
             return
@@ -476,21 +472,20 @@ async def cb_create_alert(
         session.add(alert)
         await session.flush()
         await state.clear()
-        word = "above" if alert.op == ">" else "below"
         await cb.message.edit_text(
-            f"✅ <b>Alert #{alert.id} created</b>\nWe’ll notify you when <b>{alert.symbol}</b> goes {word} <b>{fmt_usd(alert.target)}</b>.",
+            tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if alert.op == ">" else "below"), target=fmt_usd(alert.target)),
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
         return
     if action == "set" and len(parts) == 5:
         symbol, direction, pct_text = parts[2], parts[3], parts[4]
         if direction not in {"up", "down"} or pct_text not in {"1", "3", "5", "10"}:
-            await cb.message.edit_text("That alert option is no longer valid. Start again.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await cb.message.edit_text(tr(u.language, "invalid_option"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
         if await active_count(session, u.id) >= limit:
             await cb.message.edit_text(
-                f"You have reached your limit of {limit} active alerts." + ("" if u.is_premium else "\nPremium unlocks more alerts and Ethereum gas alerts."),
+                tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
             return
@@ -501,7 +496,7 @@ async def cb_create_alert(
             current = None
             coin = None
         if not coin or current is None:
-            await cb.message.edit_text("Price data is temporarily unavailable. Please try again shortly; cached market data may be available soon.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
+            await cb.message.edit_text(tr(u.language, "market_unavailable"), reply_markup=create_coin_keyboard(u.id, lang=u.language))
             return
         pct = float(pct_text) / 100
         target = current * (1 + pct if direction == "up" else 1 - pct)
@@ -511,7 +506,7 @@ async def cb_create_alert(
         await session.flush()
         word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
-            f"✅ <b>Alert created</b>\nWe’ll notify you when <b>{coin.symbol.upper()}</b> goes {word} <b>{fmt_usd(target)}</b>.\n\n"
+            tr(u.language, "alert_created", id=alert.id, symbol=coin.symbol.upper(), word=tr(u.language, "above" if op == ">" else "below"), target=fmt_usd(target)) + "\n\n"
             f"{tr(u.language, 'reference_price')}: {fmt_usd(current)} · {tr(u.language, 'target_offset')}: {pct_text}%",
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
@@ -526,7 +521,7 @@ async def receive_custom_alert_value(
     raw = (m.text or "").strip()
     if raw.lower() in {"/cancel", "cancel"}:
         await state.clear()
-        await m.answer("Custom alert cancelled.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
         return
     data = await state.get_data()
     symbol, direction, kind = data.get("symbol"), data.get("direction"), data.get("custom_kind")
@@ -536,12 +531,12 @@ async def receive_custom_alert_value(
         return
     try:
         if kind == "custompct":
-            pct = parse_percentage(raw)
+            pct = parse_percentage(raw, direction=direction)
         else:
             target = parse_number(raw)
     except ValueError:
         prompt = (tr(u.language, "invalid_pct") if kind == "custompct" else tr(u.language, "invalid_price"))
-        await m.answer(f"Invalid value. {prompt} Send /cancel to stop.")
+        await m.answer(f"{tr(u.language, 'invalid_value')} {prompt} {tr(u.language, 'send_value')}")
         return
     try:
         coin = await prices.resolve(symbol)
@@ -553,11 +548,15 @@ async def receive_custom_alert_value(
         return
     if kind == "custompct":
         target = current * (1 + pct / 100 if direction == "up" else 1 - pct / 100)
-        label = f"{pct:g}% change from current price"
+        label = f"{tr(u.language, 'change_from_current')} ({pct:g}%)"
     else:
         if (direction == "up" and target <= current) or (direction == "down" and target >= current):
             relation = tr(u.language, "higher_than" if direction == "up" else "lower_than")
-            await m.answer(f"For an alert when {symbol.upper()} {'rises' if direction == 'up' else 'falls'}, the target must be {relation} the current price ({fmt_usd(current)}). Enter another value or /cancel.")
+            await m.answer(tr(
+                u.language, "target_direction_invalid", symbol=symbol.upper(),
+                direction=tr(u.language, "rises_word" if direction == "up" else "falls_word"),
+                relation=relation, current=fmt_usd(current),
+            ))
             return
         label = tr(u.language, "exact_target")
     op = ">" if direction == "up" else "<"
@@ -566,9 +565,9 @@ async def receive_custom_alert_value(
         current=float(current), target_label=label,
     )
     await state.set_state(AlertCustomInput.confirming)
-    word = "above" if direction == "up" else "below"
+    relation = tr(u.language, "above" if direction == "up" else "below")
     await m.answer(
-        f"{tr(u.language, 'confirm_prompt')}\n<b>{coin.symbol.upper()}</b> {word} <b>{fmt_usd(target)}</b>\n"
+        f"{tr(u.language, 'confirm_prompt')}\n{tr(u.language, 'confirm_alert_line', symbol=coin.symbol.upper(), relation=relation, target=fmt_usd(target))}\n"
         f"{tr(u.language, 'current_price')}: {fmt_usd(current)}\n{tr(u.language, 'target_type')}: {label}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=tr(u.language, "confirm"), callback_data="create:confirm"),
@@ -578,9 +577,10 @@ async def receive_custom_alert_value(
 
 
 @router.message(Command("cancel"))
-async def cmd_cancel_alert(m: Message, state: FSMContext):
+async def cmd_cancel_alert(m: Message, state: FSMContext, session: AsyncSession):
     await state.clear()
-    await m.answer("Custom alert cancelled.", reply_markup=nav_keyboard(m.from_user.id))
+    u = await get_user(session, m.from_user)
+    await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.callback_query(F.data.startswith("alertdel:"))
@@ -590,10 +590,11 @@ async def cb_delete_alert(cb: CallbackQuery, session: AsyncSession):
         alert_id = int((cb.data or "").split(":", 1)[1])
     except (ValueError, IndexError):
         return
-    result = await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.user_id == cb.from_user.id))
+    u = await get_user(session, cb.from_user)
+    result = await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.user_id == u.id))
     if cb.message:
-        message = "✅ Alert deleted." if result.rowcount else "That alert was already removed."
-        await cb.message.edit_text(message, reply_markup=nav_keyboard(cb.from_user.id))
+        message = tr(u.language, "deleted") if result.rowcount else tr(u.language, "already_removed")
+        await cb.message.edit_text(message, reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.callback_query(F.data.startswith("dash:"))
@@ -785,9 +786,9 @@ def premium_copy(lang: str = "en") -> str:
 async def cmd_premium(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
     if u.id == settings.owner_id:
-        return await m.answer("⭐ Premium is enabled for the owner account at no charge.")
+        return await m.answer(tr(u.language, "premium_owner"))
     status = (
-        f"\n\nYour Premium is active until {u.premium_until:%Y-%m-%d} UTC. Buying again adds {settings.premium_days} days."
+        "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
         if u.is_premium and u.premium_until else ""
     )
     await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
@@ -799,20 +800,21 @@ async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
     u = await get_user(session, cb.from_user)
     if u.id == settings.owner_id:
         if cb.message:
-            await cb.message.answer("⭐ Premium is already enabled for the owner account.")
+            await cb.message.answer(tr(u.language, "premium_owner"))
         return
     await bot.send_invoice(
         chat_id=cb.from_user.id,
-        title=f"Orbsat Premium · {settings.premium_days} days",
-        description=f"Up to {settings.premium_alert_limit} active alerts and Ethereum gas alerts for {settings.premium_days} days.",
+        title=tr(u.language, "premium_invoice_title", days=settings.premium_days),
+        description=tr(u.language, "premium_invoice_description", limit=settings.premium_alert_limit, days=settings.premium_days),
         payload=f"premium:{settings.premium_days}",
         currency="XTR",
-        prices=[LabeledPrice(label="Orbsat Premium", amount=settings.premium_price_stars)],
+        prices=[LabeledPrice(label=tr(u.language, "premium_label"), amount=settings.premium_price_stars)],
     )
 
 
 @router.pre_checkout_query()
-async def pre_checkout(q: PreCheckoutQuery):
+async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
+    u = await get_user(session, q.from_user)
     valid_invoice = (
         q.invoice_payload == f"premium:{settings.premium_days}"
         and q.currency == "XTR"
@@ -821,7 +823,7 @@ async def pre_checkout(q: PreCheckoutQuery):
     if valid_invoice:
         await q.answer(ok=True)
     else:
-        await q.answer(ok=False, error_message="This invoice is no longer valid.")
+        await q.answer(ok=False, error_message=tr(u.language, "invoice_invalid"))
 
 
 @router.message(F.successful_payment)
@@ -845,9 +847,9 @@ async def paid(m: Message, session: AsyncSession):
             .returning(Payment.id)
         )
         if inserted is None:
-            await m.answer("This payment was already recorded; no duplicate action was taken.")
+            await m.answer(tr(u.language, "payment_duplicate_recorded"))
         else:
-            await m.answer(f"Payment recorded but could not be matched to the current Premium offer. No Premium was added. Contact {settings.support_contact} with this payment.")
+            await m.answer(tr(u.language, "payment_mismatch_contact", support=settings.support_contact))
         return
     days = settings.premium_days
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
@@ -862,27 +864,26 @@ async def paid(m: Message, session: AsyncSession):
         .returning(Payment.id)
     )
     if inserted is None:
-        await m.answer("This payment was already processed; Premium was not added twice.")
+        await m.answer(tr(u.language, "payment_duplicate_processed"))
         return
     u.premium_until = expiry
     metrics.PAYMENTS.inc()
     await m.answer(
-        f"Thank you! Premium is active until {u.premium_until:%Y-%m-%d} UTC.",
+        tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d")),
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
 
 @router.message(Command("paysupport"))
-async def cmd_paysupport(m: Message):
-    await m.answer(f"Payment problem or refund request? Message {settings.support_contact} with the date of your payment.")
+async def cmd_paysupport(m: Message, session: AsyncSession):
+    u = await get_user(session, m.from_user)
+    await m.answer(tr(u.language, "payment_support", support=settings.support_contact))
 
 
 @router.message(Command("terms"))
-async def cmd_terms(m: Message):
-    await m.answer(
-        "Prices come from public sources and can be delayed or wrong. Alerts are best-effort and are not "
-        "financial advice. Premium is a digital service paid in Telegram Stars; refunds via /paysupport."
-    )
+async def cmd_terms(m: Message, session: AsyncSession):
+    u = await get_user(session, m.from_user)
+    await m.answer(tr(u.language, "terms_text"))
 
 
 # ---------- Admin ----------

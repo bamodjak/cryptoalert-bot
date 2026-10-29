@@ -57,7 +57,7 @@ def build_web_app(redis: Redis) -> web.Application:
         except Exception:
             log.exception("health check failed")
             return web.json_response({"ok": False, "error": "dependency check failed"}, status=503, headers=CORS_HEADERS)
-        stale = worker.last_success and time.time() - worker.last_success > settings.check_interval * 5
+        stale = not worker.last_success or time.time() - worker.last_success > settings.check_interval * 5
         if stale:
             return web.json_response({"ok": False, "error": "alert worker stale"}, status=503, headers=CORS_HEADERS)
         return web.json_response({"ok": True}, headers=CORS_HEADERS)
@@ -164,7 +164,10 @@ async def main() -> None:
     runner = None
     try:
         if settings.webhook_base_url:
-            SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=settings.webhook_secret or None).register(
+            # Never expose an unauthenticated webhook when no secret was configured.
+            # Telegram receives this generated value in set_webhook below.
+            webhook_secret = settings.webhook_secret or secrets.token_urlsafe(32)
+            SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=webhook_secret).register(
                 app, path=settings.webhook_path
             )
             setup_application(app, dp, bot=bot)
@@ -173,7 +176,7 @@ async def main() -> None:
             await web.TCPSite(runner, settings.host, settings.port).start()
             await bot.set_webhook(
                 settings.webhook_base_url.rstrip("/") + settings.webhook_path,
-                secret_token=settings.webhook_secret or None,
+                secret_token=webhook_secret,
                 allowed_updates=dp.resolve_used_update_types(),
             )
             log.info("webhook mode on :%s", settings.port)
