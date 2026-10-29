@@ -434,7 +434,7 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "custom_price"), callback_data=f"create:customprice:{symbol}:{direction}")],
             [InlineKeyboardButton(text=tr(u.language, "back_short"), callback_data=f"create:coin:{symbol}")],
         ]
-        await edit_if_changed(cb.message, 
+        await edit_if_changed(cb.message,
             f"<b>{symbol.upper()}</b> {tr(u.language, 'target_prompt')}"
             ,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
@@ -452,7 +452,7 @@ async def cb_create_alert(
             if action == "custompct"
             else tr(u.language, "price_prompt")
         )
-        await edit_if_changed(cb.message, 
+        await edit_if_changed(cb.message,
             f"<b>{tr(u.language, 'create_title')} · {symbol.upper()}</b>\n{prompt}\n\n{tr(u.language, 'send_value')}"
         )
         return
@@ -469,7 +469,7 @@ async def cb_create_alert(
         limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
         if await active_count(session, u.id) >= limit:
             await state.clear()
-            await edit_if_changed(cb.message, 
+            await edit_if_changed(cb.message,
                 tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
@@ -481,7 +481,7 @@ async def cb_create_alert(
         session.add(alert)
         await session.flush()
         await state.clear()
-        await edit_if_changed(cb.message, 
+        await edit_if_changed(cb.message,
             tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if alert.op == ">" else "below"), target=fmt_usd(alert.target)),
             reply_markup=nav_keyboard(u.id, lang=u.language),
         )
@@ -493,7 +493,7 @@ async def cb_create_alert(
             return
         limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
         if await active_count(session, u.id) >= limit:
-            await edit_if_changed(cb.message, 
+            await edit_if_changed(cb.message,
                 tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
                 reply_markup=nav_keyboard(u.id, lang=u.language),
             )
@@ -514,7 +514,7 @@ async def cb_create_alert(
         session.add(alert)
         await session.flush()
         word = "above" if direction == "up" else "below"
-        await edit_if_changed(cb.message, 
+        await edit_if_changed(cb.message,
             tr(u.language, "alert_created", id=alert.id, symbol=coin.symbol.upper(), word=tr(u.language, "above" if op == ">" else "below"), target=fmt_usd(target)) + "\n\n"
             f"{tr(u.language, 'reference_price')}: {fmt_usd(current)} · {tr(u.language, 'target_offset')}: {pct_text}%",
             reply_markup=nav_keyboard(u.id, lang=u.language),
