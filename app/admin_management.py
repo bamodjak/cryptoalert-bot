@@ -219,7 +219,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
             ids = list((await session.scalars(select(User.id).order_by(User.id))).all())
         else:
             ids = state.get("ids", [])
-        existing = list((await session.scalars(select(User.id).where(User.id.in_(ids)))).all()) if ids else []
+        existing = list((await session.scalars(select(User).where(User.id.in_(ids)))).all()) if ids else []
         found_ids = {u.id for u in existing}
         missing = sorted(set(ids) - found_ids)
         payload = {"ids": sorted(found_ids), "days": days, "missing": missing, "invalid": state.get("invalid", [])}
