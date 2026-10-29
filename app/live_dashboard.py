@@ -42,7 +42,7 @@ COINS = (
     ("polkadot", "DOT", "Polkadot", "dotusdt"),
     ("chainlink", "LINK", "Chainlink", "linkusdt"),
     ("litecoin", "LTC", "Litecoin", "ltcusdt"),
-    ("tether", "USDT", "Tether", "usdtusdt"),
+    ("tether", "USDT", "Tether", ""),
     ("usd-coin", "USDC", "USDC", "usdcusdt"),
 )
 PAIR_TO_COIN = {pair.upper(): (coin_id, symbol, name) for coin_id, symbol, name, pair in COINS}
@@ -92,6 +92,8 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
     seeded = {}
     for coin_id, value in initial.items():
         seeded[coin_id] = (float(value), now - 10)
+        await redis.set(f"live:px:{coin_id}", float(value), ex=PRICE_TTL_SECONDS)
+        await redis.set(f"live:ts:{coin_id}", now - 10, ex=PRICE_TTL_SECONDS)
     text = format_dashboard(seeded, user.language)
     sent = await message.answer(text, reply_markup=dashboard_keyboard(user.language))
     record = {
@@ -127,13 +129,13 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
         except TelegramBadRequest:
             pass
     elif action == "refresh":
-        # The background updater owns message edits; this button only acknowledges.
-        await callback.answer(tr(user.language, "live_refreshing"), show_alert=False)
+        # The background updater owns message edits; the callback is acknowledged above.
+        return
 
 
 async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: asyncio.Event) -> None:
     """Subscribe to public individual-trade events and cache the most recent price per coin."""
-    streams = "/".join(f"{pair}@trade" for _coin_id, _symbol, _name, pair in COINS)
+    streams = "/".join(f"{pair}@trade" for _coin_id, _symbol, _name, pair in COINS if pair)
     url = f"wss://stream.binance.com:9443/stream?streams={streams}"
     while not stop.is_set():
         try:
@@ -154,6 +156,11 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
                             coin_id, _symbol, _name = coin
                             await redis.set(f"live:px:{coin_id}", price, ex=PRICE_TTL_SECONDS)
                             await redis.set(f"live:ts:{coin_id}", time.time(), ex=PRICE_TTL_SECONDS)
+                            # USDT is a USD-pegged stablecoin and has no USDT/USDT market pair.
+                            # Refresh its approximate peg alongside the USDC/USDT trade stream.
+                            if str(event.get("s", "")).upper() == "USDCUSDT":
+                                await redis.set("live:px:tether", 1.0, ex=PRICE_TTL_SECONDS)
+                                await redis.set("live:ts:tether", time.time(), ex=PRICE_TTL_SECONDS)
                         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                             continue
                     elif message.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
