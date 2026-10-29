@@ -53,3 +53,17 @@ def test_custom_percentage(value, expected):
 def test_bad_custom_percentage(value):
     with pytest.raises(ValueError):
         parse_percentage(value)
+
+
+@pytest.mark.parametrize("value", ["100%", "100.01%", "1000%"])
+def test_falling_percentages_cannot_create_zero_or_negative_targets(value):
+    with pytest.raises(ValueError):
+        parse_percentage(value, direction="down")
+
+
+def test_rising_percentage_can_exceed_100_percent():
+    assert parse_percentage("250%", direction="up") == pytest.approx(250)
+
+
+def test_falling_percentage_below_100_is_valid():
+    assert parse_percentage("99.99%", direction="down") == pytest.approx(99.99)
