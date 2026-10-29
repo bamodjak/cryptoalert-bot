@@ -292,9 +292,9 @@ async def cmd_alert(m: Message, command: CommandObject, session: AsyncSession, p
     try:
         coin = await prices.resolve(sym)
     except PriceError:
-        return await m.answer("The price source is busy. Try again in a minute.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "price_busy"), reply_markup=nav_keyboard(u.id, lang=u.language))
     if not coin:
-        return await m.answer("I don't know that coin. Try its ticker, like btc or sol.", reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "unknown_coin"), reply_markup=nav_keyboard(u.id, lang=u.language))
     alert = Alert(user_id=u.id, kind="price", coin_id=coin.id, symbol=coin.symbol.upper(), op=op, target=target)
     session.add(alert)
     await session.flush()
