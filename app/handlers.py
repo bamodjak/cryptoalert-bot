@@ -425,7 +425,6 @@ async def cb_create_alert(
             [InlineKeyboardButton(text=tr(u.language, "custom_price"), callback_data=f"create:customprice:{symbol}:{direction}")],
             [InlineKeyboardButton(text=tr(u.language, "back_short"), callback_data=f"create:coin:{symbol}")],
         ]
-        word = "above" if direction == "up" else "below"
         await cb.message.edit_text(
             f"<b>{symbol.upper()}</b> {tr(u.language, 'target_prompt')}"
             ,
@@ -473,7 +472,6 @@ async def cb_create_alert(
         session.add(alert)
         await session.flush()
         await state.clear()
-        word = "above" if alert.op == ">" else "below"
         await cb.message.edit_text(
             tr(u.language, "alert_created", id=alert.id, symbol=alert.symbol, word=tr(u.language, "above" if alert.op == ">" else "below"), target=fmt_usd(alert.target)),
             reply_markup=nav_keyboard(u.id, lang=u.language),
