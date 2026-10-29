@@ -35,6 +35,7 @@ COMMANDS = [
     BotCommand(command="gas", description="Check Ethereum network gas"),
     BotCommand(command="premium", description="Unlock more alerts"),
     BotCommand(command="help", description="How Orbsat works"),
+    BotCommand(command="language", description="Change language / تغيير اللغة"),
     BotCommand(command="terms", description="Service terms"),
     BotCommand(command="paysupport", description="Payment help"),
 ]
