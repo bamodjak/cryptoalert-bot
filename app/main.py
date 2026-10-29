@@ -28,13 +28,14 @@ log = logging.getLogger("bot")
 
 COMMANDS = [
     BotCommand(command="start", description="Home & referral link"),
-    BotCommand(command="price", description="Current price, e.g. /price btc"),
-    BotCommand(command="alert", description="New alert, e.g. /alert btc > 70000"),
-    BotCommand(command="alerts", description="Your active alerts"),
-    BotCommand(command="gas", description="Ethereum gas now"),
-    BotCommand(command="gasalert", description="Gas alert in gwei (Premium)"),
-    BotCommand(command="premium", description="More alerts + gas alerts"),
-    BotCommand(command="help", description="How it works"),
+    BotCommand(command="create", description="Create an alert with buttons"),
+    BotCommand(command="price", description="Check a coin price"),
+    BotCommand(command="alerts", description="View or remove your alerts"),
+    BotCommand(command="gas", description="Check Ethereum network gas"),
+    BotCommand(command="premium", description="Unlock more alerts"),
+    BotCommand(command="help", description="How Orbsat works"),
+    BotCommand(command="terms", description="Service terms"),
+    BotCommand(command="paysupport", description="Payment help"),
 ]
 
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
@@ -117,7 +118,29 @@ async def main() -> None:
     dp.message.middleware(ThrottleMiddleware(redis))
     register_routers(dp)
 
-    await bot.set_my_commands(COMMANDS)
+    # Keep each Telegram profile update independent: a profile restriction must not
+    # prevent the command menu or the bot itself from starting.
+    profile_updates = [
+        ("name", lambda: bot.set_my_name(name="Orbsat Crypto Alerts")),
+        ("description", lambda: bot.set_my_description(
+            description=(
+                "Set simple crypto price alerts in a few taps. Choose a coin, choose whether "
+                "it should rise or fall, and pick a target. Get a Telegram notification when "
+                "your level is reached. Includes BTC, ETH, SOL and more, plus Ethereum gas alerts. "
+                "Free alerts available; optional Premium is paid in Telegram Stars. Market data may "
+                "be delayed. Not financial advice."
+            )
+        )),
+        ("short description", lambda: bot.set_my_short_description(
+            short_description="Crypto price alerts in a few taps. Track BTC, ETH, SOL and more."
+        )),
+        ("command menu", lambda: bot.set_my_commands(COMMANDS)),
+    ]
+    for label, update_profile in profile_updates:
+        try:
+            await update_profile()
+        except Exception:
+            log.exception("Could not update Telegram %s; continuing startup", label)
 
     app = build_web_app(redis)
     stop = asyncio.Event()
