@@ -21,6 +21,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # Telegram user id
     username: Mapped[str | None] = mapped_column(String(64))
+    first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     premium_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
