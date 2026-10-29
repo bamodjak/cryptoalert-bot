@@ -28,3 +28,23 @@ def test_dashboard_keyboard_has_no_inert_refresh_button():
     markup = dashboard_keyboard("en")
     callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
     assert callbacks == ["live:close"]
+
+
+def test_market_trade_cache_does_not_depend_on_redis():
+    from app import live_dashboard
+
+    live_dashboard.LIVE_QUOTES.clear()
+    assert live_dashboard.record_trade("BTCUSDT", 65000.0, received_at=123.0) is True
+    assert live_dashboard.LIVE_QUOTES["bitcoin"] == (65000.0, 123.0)
+    assert live_dashboard.record_trade("USDCUSDT", 1.0001, received_at=124.0) is True
+    assert live_dashboard.LIVE_QUOTES["usd-coin"] == (1.0001, 124.0)
+    assert live_dashboard.LIVE_QUOTES["tether"] == (1.0, 124.0)
+
+
+def test_market_trade_cache_rejects_unknown_pairs_and_invalid_prices():
+    from app import live_dashboard
+
+    live_dashboard.LIVE_QUOTES.clear()
+    assert live_dashboard.record_trade("UNKNOWNUSDT", 1.0, received_at=123.0) is False
+    assert live_dashboard.record_trade("BTCUSDT", 0.0, received_at=123.0) is False
+    assert live_dashboard.LIVE_QUOTES == {}
