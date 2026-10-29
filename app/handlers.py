@@ -461,7 +461,7 @@ async def cb_create_alert(
             return
         try:
             coin = await prices.resolve(symbol)
-            current = (await prices.prices([coin.id])).get(coin.id) if coin else None
+            current = (await prices.prices([coin.id], allow_stale=True)).get(coin.id) if coin else None
         except PriceError:
             current = None
             coin = None
@@ -505,7 +505,7 @@ async def receive_custom_alert_value(
         else:
             target = parse_number(raw)
     except ValueError:
-        prompt = "Enter a percentage from 0.01% to 1000%, e.g. 2.5%." if kind == "custompct" else "Enter a positive USD target price, e.g. 72500."
+        prompt = ("Enter a percentage from 0.01% to 1000% for rises, or 0.01% to less than 100% for falls, e.g. 2.5%." if kind == "custompct" else "Enter a positive USD target price, e.g. 72500.")
         await m.answer(f"Invalid value. {prompt} Send /cancel to stop.")
         return
     try:
