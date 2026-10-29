@@ -126,7 +126,7 @@ class PriceService:
             log.warning("CoinPaprika fallback failed for %s: %s", coin_id, type(exc).__name__)
             return None
 
-    async def prices(self, ids: list[str]) -> dict[str, float]:
+    async def prices(self, ids: list[str], *, allow_stale: bool = False) -> dict[str, float]:
         ids = sorted(set(ids))
         if not ids:
             return {}
@@ -138,8 +138,10 @@ class PriceService:
 
         # Keep a separate stale copy for brief provider outages. It is only used
         # after fresh-cache misses and is refreshed whenever a new quote arrives.
-        stale_values = await self.redis.mget([f"cg:px:stale:{i}" for i in missing])
-        stale = {i: float(v) for i, v in zip(missing, stale_values) if v is not None}
+        stale = {}
+        if allow_stale:
+            stale_values = await self.redis.mget([f"cg:px:stale:{i}" for i in missing])
+            stale = {i: float(v) for i, v in zip(missing, stale_values) if v is not None}
         try:
             rate_limited = bool(await self.redis.exists("cg:rate_limited"))
         except Exception:
@@ -169,7 +171,7 @@ class PriceService:
             for cid, value in zip(unresolved, results):
                 if isinstance(value, (float, int)) and value > 0:
                     data[cid] = {"usd": float(value)}
-                elif cid in stale:
+                elif allow_stale and cid in stale:
                     data[cid] = {"usd": stale[cid]}
 
         pipe = self.redis.pipeline()
@@ -184,9 +186,10 @@ class PriceService:
             pipe.set(f"cg:px:stale:{cid}", price, ex=600)
         await pipe.execute()
         # If a fresh quote was unavailable, use the stale quote as a last resort.
-        for cid in missing:
-            if cid not in out and cid in stale:
-                out[cid] = stale[cid]
+        if allow_stale:
+            for cid in missing:
+                if cid not in out and cid in stale:
+                    out[cid] = stale[cid]
         return out
 
     async def gas_gwei(self) -> float:
