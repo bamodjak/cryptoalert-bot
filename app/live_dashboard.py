@@ -51,9 +51,9 @@ PRICE_TTL_SECONDS = 30
 
 
 def dashboard_keyboard(language: str) -> InlineKeyboardMarkup:
+    # Updates are automatic; do not show a refresh control that cannot force a refresh.
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=tr(language, "live_close"), callback_data="live:close"),
-        InlineKeyboardButton(text=tr(language, "live_refresh"), callback_data="live:refresh"),
     ]])
 
 
@@ -83,18 +83,26 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
         return await message.answer(tr("en", "live_start_hint"))
     if not user.is_premium:
         return await message.answer(tr(user.language, "live_premium_only"))
-    # Seed a first view from the existing provider cache/API. The WebSocket stream
-    # replaces these values as soon as individual trades arrive.
+    # Reuse the user's existing dashboard instead of orphaning older messages.
+    existing_raw = await redis.hget(DASHBOARDS_KEY, str(user.id))
+    if existing_raw:
+        try:
+            existing = json.loads(existing_raw)
+            existing["language"] = user.language
+            existing["last_text"] = None
+            await redis.hset(DASHBOARDS_KEY, str(user.id), json.dumps(existing))
+            await message.answer(tr(user.language, "live_started_hint"))
+            return
+        except Exception:
+            await redis.hdel(DASHBOARDS_KEY, str(user.id))
+    # Provider-cache timestamps are unknown; show seeded quotes as stale until the
+    # WebSocket supplies a timestamped trade.
     try:
         initial = await prices.prices([coin_id for coin_id, *_ in COINS], allow_stale=True)
     except PriceError:
         initial = {}
     now = time.time()
-    seeded = {}
-    for coin_id, value in initial.items():
-        seeded[coin_id] = (float(value), now - 10)
-        await redis.set(f"live:px:{coin_id}", float(value), ex=PRICE_TTL_SECONDS)
-        await redis.set(f"live:ts:{coin_id}", now - 10, ex=PRICE_TTL_SECONDS)
+    seeded = {coin_id: (float(value), now - PRICE_TTL_SECONDS - 1) for coin_id, value in initial.items()}
     text = format_dashboard(seeded, user.language)
     sent = await message.answer(text, reply_markup=dashboard_keyboard(user.language))
     record = {
@@ -102,6 +110,7 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
         "chat_id": sent.chat.id,
         "message_id": sent.message_id,
         "language": user.language,
+        "last_text": text,
     }
     await redis.hset(DASHBOARDS_KEY, str(user.id), json.dumps(record))
     await message.answer(tr(user.language, "live_started_hint"))
@@ -109,14 +118,28 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
 
 @router.callback_query(F.data.startswith("live:"))
 async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
-    await callback.answer()
     if not callback.message:
+        await callback.answer()
         return
     user = await session.get(User, callback.from_user.id)
     if user is None:
+        await callback.answer()
         return
-    if not user.is_premium:
+    current_raw = await redis.hget(DASHBOARDS_KEY, str(user.id))
+    try:
+        current = json.loads(current_raw) if current_raw else {}
+    except (ValueError, TypeError):
+        current = {}
+    is_current = (
+        int(current.get("chat_id", -1)) == callback.message.chat.id
+        and int(current.get("message_id", -1)) == callback.message.message_id
+    )
+    if not is_current:
+        await callback.answer("This dashboard is no longer active.", show_alert=True)
+        return
+    if not user.is_premium or user.suspended:
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
+        await callback.answer("Premium access is required.", show_alert=True)
         try:
             await callback.message.edit_text(tr(user.language, "live_premium_only"))
         except TelegramBadRequest:
@@ -125,13 +148,14 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
     action = (callback.data or "").split(":", 1)[-1]
     if action == "close":
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
+        await callback.answer()
         try:
             await callback.message.edit_text(tr(user.language, "live_closed"))
         except TelegramBadRequest:
             pass
-    elif action == "refresh":
-        # The background updater owns message edits; the callback is acknowledged above.
-        return
+    else:
+        # Kept for old keyboards created before the refresh button was removed.
+        await callback.answer("Dashboard updates automatically.")
 
 
 async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: asyncio.Event) -> None:
@@ -212,14 +236,21 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                                     pass
                             continue
                         text = format_dashboard(quotes, record.get("language", user.language))
+                        if text == record.get("last_text"):
+                            continue
                         try:
                             await bot.edit_message_text(
                                 text, chat_id=int(record["chat_id"]),
                                 message_id=int(record["message_id"]),
                                 reply_markup=dashboard_keyboard(record.get("language", user.language)),
                             )
+                            record["last_text"] = text
+                            await redis.hset(DASHBOARDS_KEY, user_key, json.dumps(record))
                         except TelegramBadRequest as exc:
-                            if "message is not modified" not in str(exc).lower():
+                            if "message is not modified" in str(exc).lower():
+                                record["last_text"] = text
+                                await redis.hset(DASHBOARDS_KEY, user_key, json.dumps(record))
+                            else:
                                 log.debug("live dashboard edit rejected: %s", exc)
                         except TelegramForbiddenError:
                             await redis.hdel(DASHBOARDS_KEY, user_key)

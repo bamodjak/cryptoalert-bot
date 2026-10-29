@@ -62,6 +62,14 @@ def test_regular_user_without_expiry_is_not_premium(monkeypatch):
 
 
 
+def test_alerts_have_entitlement_pause_state():
+    from app.db import Alert
+
+    column = Alert.__table__.c.entitlement_paused
+    assert column.nullable is False
+    assert column.default.arg is False
+
+
 def test_stars_payment_has_entitlement_tracking_fields():
     columns = Payment.__table__.c
     assert "premium_days" in columns
@@ -69,6 +77,14 @@ def test_stars_payment_has_entitlement_tracking_fields():
     assert "entitlement_end" in columns
     assert columns.entitlement_tracked.default.arg is False
 
+
+
+def test_payment_model_tracks_uncertain_refunds():
+    from app.db import Payment
+
+    column = Payment.__table__.c.refund_pending
+    assert column.nullable is False
+    assert column.default.arg is False
 
 
 def test_refund_calculation_only_removes_unused_interval():

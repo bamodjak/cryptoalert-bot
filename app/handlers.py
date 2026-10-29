@@ -36,6 +36,8 @@ class AlertCustomInput(StatesGroup):
 router = Router(name="user")
 admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
+admin.message.filter(F.chat.type == "private")
+admin.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
 
 HELP = (
     "<b>Welcome to Orbsat Crypto Alerts 👋</b>\n"
@@ -154,7 +156,9 @@ async def get_user(
 
 async def active_count(session: AsyncSession, user_id: int) -> int:
     return await session.scalar(
-        select(func.count()).select_from(Alert).where(Alert.user_id == user_id, Alert.active.is_(True))
+        select(func.count()).select_from(Alert).where(
+            Alert.user_id == user_id, Alert.active.is_(True), Alert.entitlement_paused.is_(False)
+        )
     ) or 0
 
 
@@ -346,7 +350,8 @@ async def cmd_alerts(m: Message, session: AsyncSession):
     for a in rows:
         word = tr(u.language, "above" if a.op == ">" else "below")
         val = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
-        lines.append(f"#{a.id} {a.symbol} {word} {val}")
+        paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
+        lines.append(f"{paused}#{a.id} {a.symbol} {word} {val}")
     await m.answer(
         tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
         reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
@@ -662,7 +667,8 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
             for a in rows:
                 word = "above" if a.op == ">" else "below"
                 value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
-                lines.append(f"#{a.id} {a.symbol} {word} {value}")
+                paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
+                lines.append(f"{paused}#{a.id} {a.symbol} {word} {value}")
             text = "🔔 <b>Your active alerts</b>\n" + "\n".join(lines)
         else:
             text = tr(u.language, "no_alerts")
@@ -717,7 +723,9 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "/suspend USER_ID [reason]\n/unsuspend USER_ID\n\n"
             "<b>Manual payments</b>\n/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]\n"
             "Methods: cash, cash_person, stars, baridimob, ccp, bank\n/verify PAYMENT_ID\n"
-            "/rejectpay PAYMENT_ID\n/pendingpay — list pending manual payments\n/revenue\n\n"
+            "/rejectpay PAYMENT_ID\n/pendingpay — list pending manual payments\n/revenue\n"
+            "/refund CHARGE_ID — refund Stars\n/refundpending — list uncertain refunds\n"
+            "/refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED — reconcile after checking Telegram\n\n"
             "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
             "Participants use /join GIVEAWAY_ID\n\n"
             "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
@@ -878,8 +886,17 @@ async def paid(m: Message, session: AsyncSession):
         if inserted is None:
             await m.answer(tr(u.language, "payment_duplicate_recorded"))
         else:
+            # Persist unmatched charges before telling the user support must review them.
+            await session.commit()
             await m.answer(tr(u.language, "payment_mismatch_contact", support=settings.support_contact))
         return
+    # Serialize concurrent purchases for the same user so two successful charges
+    # cannot calculate the same expiry and overwrite one another.
+    u = await session.scalar(
+        select(User).where(User.id == u.id).with_for_update().execution_options(populate_existing=True)
+    )
+    if u is None:
+        raise RuntimeError("Payment user disappeared before entitlement update")
     days = settings.premium_days
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     expiry = base + timedelta(days=days)
@@ -896,6 +913,9 @@ async def paid(m: Message, session: AsyncSession):
         await m.answer(tr(u.language, "payment_duplicate_processed"))
         return
     u.premium_until = expiry
+    # Do not tell the customer Premium is active until the charge ledger and
+    # entitlement have committed successfully.
+    await session.commit()
     metrics.PAYMENTS.inc()
     await m.answer(
         tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d")),
@@ -956,14 +976,45 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     p = await session.scalar(select(Payment).where(Payment.charge_id == charge).with_for_update()) if charge else None
     if not p or p.refunded:
         return await m.answer("Usage: /refund CHARGE_ID (unrefunded payment)")
+    if p.refund_pending:
+        return await m.answer(
+            "This payment already has a refund with an uncertain result. Do not retry it automatically; "
+            "reconcile the transaction with Telegram first."
+        )
+    # Serialize refunds for the same account before checking for an in-doubt operation.
+    await session.scalar(select(User.id).where(User.id == p.user_id).with_for_update())
+    other_pending = await session.scalar(
+        select(Payment.id).where(
+            Payment.user_id == p.user_id, Payment.refund_pending.is_(True)
+        ).limit(1)
+    )
+    if other_pending:
+        return await m.answer(
+            "Another refund for this user needs reconciliation first. Resolve it before starting another refund."
+        )
     if not p.entitlement_tracked and not allow_legacy:
         return await m.answer(
             "This older/unmatched payment has no Premium entitlement record, so no refund was issued. "
             "Review the account manually first. Explicit override: /refund CHARGE_ID ALLOW_LEGACY "
             "(Premium expiry will remain unchanged)."
         )
-    await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
+
+    # Persist an in-doubt marker before calling Telegram. If the process dies or the
+    # remote call times out, admins can reconcile the charge without blindly retrying.
+    p.refund_pending = True
+    await session.commit()
+    try:
+        await bot.refund_star_payment(user_id=p.user_id, telegram_payment_charge_id=p.charge_id)
+    except Exception:
+        # The API result may be ambiguous; keep refund_pending set and require manual review.
+        await m.answer(
+            f"Refund result for payment #{p.id} could not be confirmed. It is marked for reconciliation; "
+            "do not retry until the Telegram transaction is checked."
+        )
+        return
+
     p.refunded = True
+    p.refund_pending = False
     u = await session.get(User, p.user_id)
     if u and p.entitlement_tracked and p.entitlement_start and p.entitlement_end and u.premium_until:
         now = utcnow()
@@ -978,6 +1029,7 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
                     Payment.user_id == p.user_id,
                     Payment.id != p.id,
                     Payment.refunded.is_(False),
+                    Payment.refund_pending.is_(False),
                     Payment.entitlement_tracked.is_(True),
                     Payment.entitlement_start >= p.entitlement_end,
                 )
@@ -990,4 +1042,89 @@ async def cmd_refund(m: Message, command: CommandObject, session: AsyncSession, 
     else:
         note = " This charge has no entitlement ledger; Premium expiry was left unchanged."
     session.add(AdminAudit(admin_id=m.from_user.id, action="stars_refund", target_user_id=p.user_id, details=f"payment_id={p.id}; amount={p.amount}; entitlement_tracked={p.entitlement_tracked}"))
+    await session.commit()
     await m.answer(f"Refunded {p.amount} Stars to {p.user_id}.{note}")
+
+
+@admin.message(Command("refundpending"))
+async def pending_refunds_cmd(m: Message, session: AsyncSession):
+    rows = (await session.scalars(
+        select(Payment)
+        .where(Payment.refund_pending.is_(True))
+        .order_by(Payment.created_at.asc())
+        .limit(25)
+    )).all()
+    if not rows:
+        await m.answer("No Stars refunds need reconciliation.")
+        return
+    lines = [
+        f"Payment #{p.id} · user {p.user_id} · {p.amount} Stars · charge {p.charge_id}"
+        for p in rows
+    ]
+    await m.answer(
+        "<b>Refunds requiring reconciliation</b>\n"
+        + "\n".join(lines)
+        + "\n\nCheck each charge in Telegram before using /refundresolve CHARGE_ID REFUNDED or NOT_REFUNDED."
+    )
+
+
+@admin.message(Command("refundresolve"))
+async def resolve_pending_refund_cmd(m: Message, command: CommandObject, session: AsyncSession):
+    parts = (command.args or "").split()
+    if len(parts) != 2 or parts[1].upper() not in {"REFUNDED", "NOT_REFUNDED"}:
+        await m.answer("Usage: /refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED — verify the transaction with Telegram first.")
+        return
+    charge, outcome = parts[0], parts[1].upper()
+    payment = await session.scalar(
+        select(Payment).where(Payment.charge_id == charge).with_for_update()
+    )
+    if not payment or not payment.refund_pending or payment.refunded:
+        await m.answer("No unresolved refund exists for that charge.")
+        return
+    if outcome == "NOT_REFUNDED":
+        payment.refund_pending = False
+        session.add(AdminAudit(
+            admin_id=m.from_user.id,
+            action="stars_refund_reconciled",
+            target_user_id=payment.user_id,
+            details=f"payment_id={payment.id}; outcome=not_refunded",
+        ))
+        await session.commit()
+        await m.answer("Marked as not refunded. You may retry /refund after confirming the charge state.")
+        return
+
+    payment.refunded = True
+    payment.refund_pending = False
+    user = await session.get(User, payment.user_id)
+    note = " Premium expiry left unchanged."
+    if user and payment.entitlement_tracked and payment.entitlement_start and payment.entitlement_end and user.premium_until:
+        now = utcnow()
+        remaining = refundable_unused_duration(
+            payment.entitlement_start, payment.entitlement_end, user.premium_until, now
+        )
+        if remaining:
+            user.premium_until = max(now, user.premium_until - remaining)
+            future_payments = (await session.scalars(
+                select(Payment)
+                .where(
+                    Payment.user_id == payment.user_id,
+                    Payment.id != payment.id,
+                    Payment.refunded.is_(False),
+                    Payment.refund_pending.is_(False),
+                    Payment.entitlement_tracked.is_(True),
+                    Payment.entitlement_start >= payment.entitlement_end,
+                )
+                .with_for_update()
+            )).all()
+            for future_payment in future_payments:
+                future_payment.entitlement_start -= remaining
+                future_payment.entitlement_end -= remaining
+        note = f" Premium expiry adjusted by {remaining.days}d {remaining.seconds // 3600}h."
+    session.add(AdminAudit(
+        admin_id=m.from_user.id,
+        action="stars_refund_reconciled",
+        target_user_id=payment.user_id,
+        details=f"payment_id={payment.id}; outcome=refunded",
+    ))
+    await session.commit()
+    await m.answer(f"Marked payment #{payment.id} as refunded after manual verification.{note}")

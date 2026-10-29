@@ -39,7 +39,10 @@ class User(Base):
 
 class Alert(Base):
     __tablename__ = "alerts"
-    __table_args__ = (Index("ix_alerts_active_kind", "active", "kind"),)
+    __table_args__ = (
+        Index("ix_alerts_active_kind", "active", "kind"),
+        Index("ix_alerts_active_entitlement", "active", "entitlement_paused"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -49,18 +52,21 @@ class Alert(Base):
     op: Mapped[str] = mapped_column(String(1))  # ">" | "<"
     target: Mapped[float] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    entitlement_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Payment(Base):
     __tablename__ = "payments"
+    __table_args__ = (Index("ix_payments_refund_pending", "refund_pending"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     charge_id: Mapped[str] = mapped_column(String(128), unique=True)
     amount: Mapped[int] = mapped_column(Integer)  # in Stars
     refunded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    refund_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     premium_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entitlement_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     entitlement_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

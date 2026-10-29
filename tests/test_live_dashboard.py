@@ -20,3 +20,11 @@ def test_stream_pairs_map_to_supported_coins_only():
     assert PAIR_TO_COIN["BTCUSDT"][0] == "bitcoin"
     assert PAIR_TO_COIN["ETHUSDT"][0] == "ethereum"
     assert all(pair for _coin_id, _symbol, _name, pair in COINS if _symbol != "USDT")
+
+
+def test_dashboard_keyboard_has_no_inert_refresh_button():
+    from app.live_dashboard import dashboard_keyboard
+
+    markup = dashboard_keyboard("en")
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert callbacks == ["live:close"]
