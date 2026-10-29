@@ -244,8 +244,6 @@ async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "nav:share")
 async def cb_share(cb: CallbackQuery, session: AsyncSession):
     u = await get_user(session, cb.from_user)
-    u.affiliation_shares = (u.affiliation_shares or 0) + 1
-    await session.flush()
     ref_link = f"https://t.me/{settings.bot_username}?start=ref_{u.id}"
     text = (
         f"{tr(u.language, 'affiliation_title')}\n\n"
