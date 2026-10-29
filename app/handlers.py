@@ -187,6 +187,40 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
     await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
 
 
+@router.message(Command("language"))
+async def cmd_language(m: Message, session: AsyncSession):
+    u = await get_user(session, m.from_user)
+    await m.answer(
+        tr(u.language, "choose_language"),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=tr("en", "english"), callback_data="lang:set:en"),
+            InlineKeyboardButton(text=tr("ar", "arabic"), callback_data="lang:set:ar"),
+        ], [InlineKeyboardButton(text=tr(u.language, "home"), callback_data="nav:home")]]),
+    )
+
+
+@router.callback_query(F.data.startswith("lang:"))
+async def cb_language(cb: CallbackQuery, session: AsyncSession):
+    await cb.answer()
+    u = await get_user(session, cb.from_user)
+    parts = (cb.data or "").split(":")
+    if len(parts) == 2 and parts[1] == "choose":
+        text = tr(u.language, "choose_language")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=tr("en", "english"), callback_data="lang:set:en"),
+            InlineKeyboardButton(text=tr("ar", "arabic"), callback_data="lang:set:ar"),
+        ], [InlineKeyboardButton(text=tr(u.language, "home"), callback_data="nav:home")]])
+    elif len(parts) == 3 and parts[1] == "set" and parts[2] in {"en", "ar"}:
+        u.language = parts[2]
+        await session.flush()
+        text = tr(u.language, "language_saved") + "\\n\\n" + welcome_text(u.language)
+        keyboard = nav_keyboard(u.id, show_back=False, lang=u.language)
+    else:
+        return
+    if cb.message:
+        await cb.message.edit_text(text, reply_markup=keyboard)
+
+
 @router.message(Command("help"))
 async def cmd_help(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
@@ -228,7 +262,7 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
 async def cmd_price(m: Message, command: CommandObject, session: AsyncSession, prices: PriceService):
     u = await get_user(session, m.from_user)
     if not command.args:
-        return await m.answer("Usage: /price btc", reply_markup=nav_keyboard(u.id))
+        return await m.answer("Usage: /price btc", reply_markup=nav_keyboard(u.id, lang=u.language))
     try:
         coin = await prices.resolve(command.args.split()[0])
         if not coin:
@@ -320,7 +354,7 @@ async def cmd_alerts(m: Message, session: AsyncSession):
         lines.append(f"#{a.id} {a.symbol} {word} {val}")
     await m.answer(
         "🔔 <b>Your active alerts</b>\n" + "\n".join(lines) + "\n\nTap an alert below to remove it.",
-        reply_markup=alerts_keyboard(rows, u.id),
+        reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
     )
 
 
@@ -342,10 +376,10 @@ async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
 @router.message(Command("create"))
 async def cmd_create(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
-    await m.answer("🔔 <b>Create a price alert</b>\nChoose a coin to get started.", reply_markup=create_coin_keyboard(u.id))
+    await m.answer("🔔 <b>Create a price alert</b>\nChoose a coin to get started.", reply_markup=create_coin_keyboard(u.id, lang=u.language))
 
 
-def create_coin_keyboard(user_id: int) -> InlineKeyboardMarkup:
+def create_coin_keyboard(user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
     coins = [
         ("₿ Bitcoin", "btc"), ("Ξ Ethereum", "eth"), ("◎ Solana", "sol"),
         ("BNB", "bnb"), ("XRP", "xrp"), ("DOGE", "doge"),
