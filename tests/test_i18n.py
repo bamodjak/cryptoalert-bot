@@ -19,3 +19,12 @@ def test_unknown_language_falls_back_to_english():
 
 def test_arabic_translation_keys_cover_english_interface():
     assert set(TEXT["en"]) <= set(TEXT["ar"]) | {"en"}
+
+
+def test_target_price_example_uses_dynamic_current_price_in_supported_languages():
+    assert "72500" not in TEXT["en"]["target_prompt"]
+    assert "72500" not in TEXT["ar"]["target_prompt"]
+    assert "$80,000" in tr("en", "target_prompt", current_price="$80,000")
+    assert "$80,000" in tr("ar", "target_prompt", current_price="$80,000")
+    assert "{current_price}" not in tr("en", "target_prompt_no_price")
+    assert "{current_price}" not in tr("ar", "target_prompt_no_price")
