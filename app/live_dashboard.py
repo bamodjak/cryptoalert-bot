@@ -62,6 +62,19 @@ def dashboard_keyboard(language: str) -> InlineKeyboardMarkup:
     ]])
 
 
+def record_trade(pair: str, price: float, received_at: float | None = None) -> bool:
+    """Store a validated market tick in memory without consuming Redis requests."""
+    coin = PAIR_TO_COIN.get(pair.upper())
+    if coin is None or price <= 0:
+        return False
+    timestamp = time.time() if received_at is None else received_at
+    LIVE_QUOTES[coin[0]] = (float(price), timestamp)
+    # USDT has no USDT/USDT pair; approximate its peg from USDC/USDT trades.
+    if pair.upper() == "USDCUSDT":
+        LIVE_QUOTES["tether"] = (1.0, timestamp)
+    return True
+
+
 def format_dashboard(prices: dict[str, tuple[float, float]], language: str, now: float | None = None) -> str:
     """Format the latest received trades; each tuple is (USD price, receive timestamp)."""
     now = now or time.time()
@@ -187,12 +200,7 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
                             price = float(event["p"])
                             if price <= 0:
                                 continue
-                            coin_id, _symbol, _name = coin
-                            LIVE_QUOTES[coin_id] = (price, time.time())
-                            # USDT is a USD-pegged stablecoin and has no USDT/USDT market pair.
-                            # Refresh its approximate peg alongside the USDC/USDT trade stream.
-                            if str(event.get("s", "")).upper() == "USDCUSDT":
-                                LIVE_QUOTES["tether"] = (1.0, time.time())
+                            record_trade(str(event.get("s", "")), price)
                         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                             continue
                     elif message.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
