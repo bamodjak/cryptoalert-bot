@@ -1,0 +1,42 @@
+name: Render free-service heartbeat
+
+on:
+  schedule:
+    # Best-effort inbound traffic to prevent the free web service from idling.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-free-service-heartbeat
+  cancel-in-progress: true
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping Render service and retry cold starts
+        shell: bash
+        env:
+          SERVICE_URL: https://cryptoalert-bot-i0ev.onrender.com
+        run: |
+          set -u
+          for attempt in 1 2 3 4 5; do
+            echo "Heartbeat attempt ${attempt}/5"
+            status="$(curl --silent --show-error --location --max-time 20 \
+              --output /tmp/render-response.txt --write-out '%{http_code}' \
+              "${SERVICE_URL}/" 2>/tmp/curl-error.txt || true)"
+            if [[ "${status}" =~ ^[23][0-9][0-9]$ ]]; then
+              echo "Render returned HTTP ${status}"
+              cat /tmp/render-response.txt
+              exit 0
+            fi
+            echo "No successful HTTP response (status=${status:-none})"
+            cat /tmp/curl-error.txt || true
+            if [[ "${attempt}" -lt 5 ]]; then sleep 15; fi
+          done
+          echo "Render service did not respond successfully after retries."
+          exit 1
