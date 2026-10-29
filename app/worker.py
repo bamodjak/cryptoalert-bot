@@ -51,10 +51,31 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
     global last_success
     async with Session() as s:
         rows = (await s.execute(
-            select(Alert, User.language)
+            select(Alert, User.language, User.premium_until, User.id)
             .join(User, User.id == Alert.user_id)
             .where(Alert.active.is_(True), User.suspended.is_(False))
+            .order_by(Alert.user_id, Alert.created_at, Alert.id)
         )).all()
+        # Preserve alert configurations after Premium expiry, but pause gas alerts and
+        # price alerts beyond the Free-plan allowance. Renewal automatically unpauses them.
+        now = utcnow()
+        price_counts: dict[int, int] = {}
+        eligible_rows = []
+        for alert, language, premium_until, user_id in rows:
+            premium = user_id == settings.owner_id or (premium_until is not None and premium_until > now)
+            if premium:
+                should_pause = False
+            elif alert.kind == "gas":
+                should_pause = True
+            else:
+                price_counts[user_id] = price_counts.get(user_id, 0) + 1
+                should_pause = price_counts[user_id] > settings.free_alert_limit
+            if alert.entitlement_paused != should_pause:
+                alert.entitlement_paused = should_pause
+            if not should_pause:
+                eligible_rows.append((alert, language))
+        await s.commit()
+    rows = eligible_rows
     alerts = [row[0] for row in rows]
     languages = {alert.user_id: language for alert, language in rows}
     if not alerts:
