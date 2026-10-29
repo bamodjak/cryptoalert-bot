@@ -3,7 +3,9 @@ import csv
 import html
 import io
 import json
+import secrets
 from datetime import timedelta
+from urllib.parse import quote
 
 from aiogram import F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
@@ -13,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
-from .db import AdminAudit, Payment, PremiumGrant, User, utcnow
+from .db import AdminAudit, Payment, PremiumGrant, PremiumInvite, User, utcnow
 
 router = Router(name="admin_management")
 router.callback_query.filter(F.from_user.id.in_(settings.admin_id_set))
@@ -172,33 +174,46 @@ async def export_users(cb: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "um:export:invites")
 async def export_invites(cb: CallbackQuery, session: AsyncSession):
-    # Until a dedicated invitation registry is enabled, export pre-granted IDs
-    # as an organized CSV so the admin can track whom they still need to invite.
     users = list((await session.scalars(
         select(User).where(User.premium_until > utcnow()).order_by(User.id.asc())
     )).all())
     rows = []
     for u in users:
+        invite = await session.scalar(
+            select(PremiumInvite).where(PremiumInvite.recipient_id == u.id)
+            .order_by(PremiumInvite.created_at.desc(), PremiumInvite.id.desc()).limit(1)
+        )
+        if invite is None:
+            invite = PremiumInvite(
+                token=secrets.token_urlsafe(18), recipient_id=u.id, created_by=cb.from_user.id
+            )
+            session.add(invite)
+            await session.flush()
         kind = await _premium_kind(session, u)
         days = max(0, (u.premium_until - utcnow()).days) if u.premium_until else 0
+        link = f"https://t.me/{settings.bot_username}?start=invite_{invite.token}"
         rows.append([
             u.id, u.username or "", " ".join(x for x in (u.first_name, u.last_name) if x),
-            kind, u.premium_until.isoformat() if u.premium_until else "", days,
-            f"https://t.me/{settings.bot_username}?start=pregrant_{u.id}",
-            "Needs verified invite-token support before sending",
+            kind, u.premium_until.isoformat() if u.premium_until else "", days, link,
+            invite.recipient_started_at.isoformat() if invite.recipient_started_at else "",
+            invite.clicked_at.isoformat() if invite.clicked_at else "",
+            invite.clicked_by or "",
+            "Started by intended recipient" if invite.recipient_started_at else "Invitation not yet started by intended recipient",
         ])
+    await session.commit()
     document = _csv_file(
         "orbsat_premium_invite_tracking.csv",
         ["telegram_id", "username", "display_name", "premium_status", "premium_until_utc",
-         "premium_days_left", "bot_link", "note"],
+         "premium_days_left", "personalized_bot_link", "recipient_started_at_utc",
+         "first_click_at_utc", "first_clicker_telegram_id", "invite_status"],
         rows,
     )
     if cb.message:
         await cb.message.answer_document(
             document,
-            caption=f"Premium invitation tracking export · {len(rows)} row(s). These are tracking links, not claim-secure personalized invitations.",
+            caption=f"Personalized Premium invitations · {len(rows)} row(s). Links are tied to the intended Telegram ID; a different account cannot claim that recipient's access.",
         )
-    await cb.answer("Export ready.")
+    await cb.answer("Invitation export ready.")
 
 @router.callback_query(F.data == "admin:users")
 async def open_users(cb: CallbackQuery, session: AsyncSession):
@@ -375,6 +390,14 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
         u.premium_until = base + timedelta(days=days)
         session.add(PremiumGrant(user_id=u.id, granted_by=cb.from_user.id, days=days, reason="admin panel bulk grant"))
         session.add(AdminAudit(admin_id=cb.from_user.id, action="premium_grant", target_user_id=u.id, details=f"days={days}; source=admin_panel"))
+    # Only IDs that have never been registered need an invitation to discover the bot.
+    invites = []
+    for uid in new_ids:
+        if uid in settings.admin_id_set and uid != settings.owner_id:
+            continue
+        invite = PremiumInvite(token=secrets.token_urlsafe(18), recipient_id=uid, created_by=cb.from_user.id)
+        session.add(invite)
+        invites.append(invite)
     await session.commit()
     await redis.delete(key)
     updated = len([u for u in users if u.id not in settings.admin_id_set or u.id == settings.owner_id])
@@ -391,6 +414,23 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
             [InlineKeyboardButton(text="👥 Back to Users", callback_data="admin:users")],
             _back(),
         ]))
+        for invite in invites:
+            link = f"https://t.me/{settings.bot_username}?start=invite_{invite.token}"
+            invite_text = (
+                "🎁 You've been gifted Premium on Orbsat Crypto Alerts!\n\n"
+                f"Your access is reserved for Telegram ID {invite.recipient_id}. "
+                f"Open this link and tap Start to use your Premium access:\n{link}\n\n"
+                f"Premium duration added: {days} day(s)."
+            )
+            share_url = "https://t.me/share/url?url=" + quote(link, safe="") + "&text=" + quote(
+                "You've been gifted Premium on Orbsat Crypto Alerts! Open the link and tap Start: " + link,
+                safe="",
+            )
+            await cb.message.answer(
+                f"<b>Invitation for Telegram ID {invite.recipient_id}</b>\n\n"
+                f"<code>{link}</code>\n\n{invite_text}",
+                reply_markup=_kb([[InlineKeyboardButton(text="📨 Share invitation", url=share_url)]]),
+            )
     await cb.answer("Completed.")
 
 
