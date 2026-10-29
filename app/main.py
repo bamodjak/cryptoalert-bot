@@ -118,11 +118,11 @@ async def main() -> None:
     dp.message.middleware(ThrottleMiddleware(redis))
     register_routers(dp)
 
-    # Keep the public Telegram profile aligned with the product. These calls are
-    # idempotent and fail softly so a metadata permission issue never prevents startup.
-    try:
-        await bot.set_my_name(name="Orbsat Crypto Alerts")
-        await bot.set_my_description(
+    # Keep each Telegram profile update independent: a profile restriction must not
+    # prevent the command menu or the bot itself from starting.
+    profile_updates = [
+        ("name", lambda: bot.set_my_name(name="Orbsat Crypto Alerts")),
+        ("description", lambda: bot.set_my_description(
             description=(
                 "Set simple crypto price alerts in a few taps. Choose a coin, choose whether "
                 "it should rise or fall, and pick a target. Get a Telegram notification when "
@@ -130,13 +130,17 @@ async def main() -> None:
                 "Free alerts available; optional Premium is paid in Telegram Stars. Market data may "
                 "be delayed. Not financial advice."
             )
-        )
-        await bot.set_my_short_description(
+        )),
+        ("short description", lambda: bot.set_my_short_description(
             short_description="Crypto price alerts in a few taps. Track BTC, ETH, SOL and more."
-        )
-        await bot.set_my_commands(COMMANDS)
-    except Exception:
-        log.exception("Could not update Telegram profile metadata; continuing startup")
+        )),
+        ("command menu", lambda: bot.set_my_commands(COMMANDS)),
+    ]
+    for label, update_profile in profile_updates:
+        try:
+            await update_profile()
+        except Exception:
+            log.exception("Could not update Telegram %s; continuing startup", label)
 
     app = build_web_app(redis)
     stop = asyncio.Event()
