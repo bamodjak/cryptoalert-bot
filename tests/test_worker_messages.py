@@ -124,11 +124,12 @@ def test_csv_export_neutralizes_formula_like_user_text():
     assert _safe_csv_cell(123456) == 123456
 
 
-def test_premium_expiry_pauses_only_gas_and_excess_free_alerts():
+def test_worker_enforces_free_and_premium_alert_entitlements():
     from app.worker import should_pause_alert
 
-    assert should_pause_alert(False, "gas", 0, 30) is True
-    assert should_pause_alert(False, "price", 30, 30) is False
-    assert should_pause_alert(False, "price", 31, 30) is True
-    assert should_pause_alert(True, "gas", 500, 30) is False
-    assert should_pause_alert(True, "price", 501, 30) is False
+    assert should_pause_alert(False, "gas", 1, 30, 500) is True
+    assert should_pause_alert(False, "price", 30, 30, 500) is False
+    assert should_pause_alert(False, "price", 31, 30, 500) is True
+    assert should_pause_alert(True, "gas", 500, 30, 500) is False
+    assert should_pause_alert(True, "price", 500, 30, 500) is False
+    assert should_pause_alert(True, "price", 501, 30, 500) is True
