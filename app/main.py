@@ -21,6 +21,7 @@ from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
+from .admin_management import router as admin_management_router
 from .middlewares import KILL_KEY, DbSessionMiddleware, KillSwitchMiddleware, ThrottleMiddleware
 from .prices import PriceService
 
@@ -43,7 +44,7 @@ CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
 
 def register_routers(dp: Dispatcher) -> None:
     # Specific admin-tools callbacks must precede the generic admin:* callback handler.
-    dp.include_routers(admin_tools_router, admin, giveaway_public_router, router)
+    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, router)
 
 
 def build_web_app(redis: Redis) -> web.Application:
