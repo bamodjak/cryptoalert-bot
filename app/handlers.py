@@ -774,10 +774,10 @@ def premium_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
 
 def premium_copy(lang: str = "en") -> str:
     return (
-        tr(lang, "premium_title") + "\\n\\n"
-        + tr(lang, "free_plan", free=settings.free_alert_limit) + "\\n\\n"
+        tr(lang, "premium_title") + "\n\n"
+        + tr(lang, "free_plan", free=settings.free_alert_limit) + "\n\n"
         + tr(lang, "premium_plan", stars=settings.premium_price_stars, days=settings.premium_days, premium=settings.premium_alert_limit)
-        + "\\n\\n" + tr(lang, "pay_note")
+        + "\n\n" + tr(lang, "pay_note")
     )
 
 
