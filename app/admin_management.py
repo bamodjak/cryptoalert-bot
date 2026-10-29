@@ -34,18 +34,23 @@ async def _premium_kind(session: AsyncSession, u: User) -> str:
         return "Owner · complimentary"
     if not u.premium_until or u.premium_until <= now:
         return "Free"
-    paid = await session.scalar(select(Payment.id).where(
+    paid_end = await session.scalar(select(func.max(Payment.entitlement_end)).where(
         Payment.user_id == u.id, Payment.refunded.is_(False),
         Payment.entitlement_tracked.is_(True),
-        Payment.entitlement_start <= now, Payment.entitlement_end > now,
-    ).limit(1))
-    if paid:
-        return "Paid Premium"
-    grant = await session.scalar(select(PremiumGrant.id).where(
+    ))
+    last_paid = await session.scalar(select(func.max(Payment.created_at)).where(
+        Payment.user_id == u.id, Payment.refunded.is_(False),
+    ))
+    last_grant = await session.scalar(select(func.max(PremiumGrant.created_at)).where(
         PremiumGrant.user_id == u.id,
-        PremiumGrant.created_at + func.make_interval(0, 0, 0, PremiumGrant.days, 0, 0, 0) > now,
-    ).limit(1))
-    return "Free Premium grant" if grant else "Premium · source unclear"
+    ))
+    if last_grant and (not last_paid or last_grant > last_paid):
+        return "Free Premium grant"
+    if paid_end and paid_end > now:
+        return "Paid Premium"
+    if last_grant:
+        return "Free Premium grant"
+    return "Premium · source unclear"
 
 
 def _user_name(u: User) -> str:
