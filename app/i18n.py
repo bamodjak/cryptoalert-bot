@@ -1,3 +1,5 @@
+from .config import settings
+
 """Small, explicit English/Arabic UI translations for the user-facing bot flow."""
 
 TEXT = {
