@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics
 from .config import settings
-from .db import AdminAudit, Alert, Payment, User, utcnow
+from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_referral
@@ -153,6 +153,29 @@ async def active_count(session: AsyncSession, user_id: int) -> int:
 @router.message(CommandStart())
 async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user, command.args)
+    start_args = command.args or ""
+    if start_args.startswith("invite_"):
+        token = start_args.removeprefix("invite_").strip()
+        invite = await session.scalar(select(PremiumInvite).where(PremiumInvite.token == token))
+        if invite:
+            if invite.clicked_at is None:
+                invite.clicked_at = utcnow()
+                invite.clicked_by = u.id
+            if invite.recipient_id != u.id:
+                await m.answer(
+                    "This Premium invitation was created for a different Telegram account. "
+                    "Please switch to the account whose ID received the invitation, or contact the sender.",
+                    reply_markup=nav_keyboard(u.id, show_back=False),
+                )
+                return
+            if invite.recipient_started_at is None:
+                invite.recipient_started_at = utcnow()
+            premium_note = (
+                "\\n\\n🎁 <b>Your invitation is confirmed!</b> "
+                "Your Premium access is attached to this Telegram account."
+            )
+            await m.answer(HELP + premium_note, reply_markup=nav_keyboard(u.id, show_back=False))
+            return
     await m.answer(HELP, reply_markup=nav_keyboard(u.id, show_back=False))
 
 
