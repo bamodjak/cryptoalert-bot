@@ -643,7 +643,7 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
 
     keyboard = (
         alerts_keyboard(rows, u.id, lang=u.language) if action == "alerts" and "rows" in locals()
-        else premium_keyboard() if action == "premium"
+        else premium_keyboard(u.language) if action == "premium"
         else nav_keyboard(u.id, lang=u.language)
     )
     try:
@@ -790,7 +790,7 @@ async def cmd_premium(m: Message, session: AsyncSession):
         f"\n\nYour Premium is active until {u.premium_until:%Y-%m-%d} UTC. Buying again adds {settings.premium_days} days."
         if u.is_premium and u.premium_until else ""
     )
-    await m.answer(premium_copy() + status, reply_markup=premium_keyboard(u.language))
+    await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.callback_query(F.data == "premium:buy")
