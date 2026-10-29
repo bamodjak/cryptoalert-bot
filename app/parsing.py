@@ -15,14 +15,18 @@ def parse_number(s: str) -> float:
     return v
 
 
-def parse_percentage(text: str) -> float:
-    """Parse a custom percentage change in the supported range 0.01..1000."""
+def parse_percentage(text: str, *, direction: str | None = None) -> float:
+    """Parse a custom percentage change; falling targets must remain above zero."""
     cleaned = (text or "").strip()
     if cleaned.endswith("%"):
         cleaned = cleaned[:-1].strip()
     value = parse_number(cleaned)
     if not 0.01 <= value <= 1000:
         raise ValueError("percentage out of range")
+    if direction not in (None, "up", "down"):
+        raise ValueError("invalid direction")
+    if direction == "down" and value >= 100:
+        raise ValueError("falling percentage must be below 100")
     return value
 
 
