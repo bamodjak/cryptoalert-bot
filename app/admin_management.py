@@ -1,11 +1,13 @@
 """Button-first admin user and Premium management."""
+import csv
 import html
+import io
 import json
 from datetime import timedelta
 
 from aiogram import F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,6 +104,8 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
     rows += [
         [InlineKeyboardButton(text="🔎 Find by ID / username", callback_data="um:find")],
         [InlineKeyboardButton(text="🎁 Grant Premium to user(s)", callback_data="um:grant")],
+        [InlineKeyboardButton(text="📤 Export registered users (CSV)", callback_data="um:export:users")],
+        [InlineKeyboardButton(text="🔗 Export invitation links (CSV)", callback_data="um:export:invites")],
         [InlineKeyboardButton(text="➕ Add days to ALL users", callback_data="um:all")],
         [
             InlineKeyboardButton(text="👥 All", callback_data="um:list:all:0"),
@@ -121,6 +125,80 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
 async def _set_flow(redis: Redis, admin_id: int, state: dict):
     await redis.set(f"adminflow:{admin_id}", json.dumps(state), ex=FLOW_TTL)
 
+
+
+def _csv_file(filename: str, headers: list[str], rows: list[list[object]]) -> BufferedInputFile:
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return BufferedInputFile(stream.getvalue().encode("utf-8-sig"), filename=filename)
+
+
+@router.callback_query(F.data == "um:export:users")
+async def export_users(cb: CallbackQuery, session: AsyncSession):
+    users = list((await session.scalars(select(User).order_by(User.created_at.asc(), User.id.asc()))).all())
+    rows = []
+    for u in users:
+        premium_kind = await _premium_kind(session, u)
+        now = utcnow()
+        days = max(0, (u.premium_until - now).days) if u.premium_until and u.premium_until > now else 0
+        paid_stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.user_id == u.id, Payment.refunded.is_(False)
+        )) or 0
+        grant_days = await session.scalar(select(func.coalesce(func.sum(PremiumGrant.days), 0)).where(
+            PremiumGrant.user_id == u.id
+        )) or 0
+        rows.append([
+            u.id, u.username or "", u.first_name or "", u.last_name or "",
+            u.created_at.isoformat() if u.created_at else "", premium_kind,
+            u.premium_until.isoformat() if u.premium_until else "", days,
+            "yes" if u.suspended else "no", "yes" if u.blocked else "no",
+            paid_stars, grant_days, u.referred_by or "", u.referrals_count or 0,
+            u.affiliation_shares or 0,
+        ])
+    document = _csv_file(
+        "orbsat_registered_users.csv",
+        ["telegram_id", "username", "first_name", "last_name", "registered_at_utc",
+         "premium_status", "premium_until_utc", "premium_days_left", "suspended",
+         "blocked", "non_refunded_stars_total", "premium_grant_days_total",
+         "referred_by_id", "referrals_joined", "referral_shares"],
+        rows,
+    )
+    if cb.message:
+        await cb.message.answer_document(document, caption=f"Registered users export · {len(rows)} account(s)")
+    await cb.answer("Export ready.")
+
+
+@router.callback_query(F.data == "um:export:invites")
+async def export_invites(cb: CallbackQuery, session: AsyncSession):
+    # Until a dedicated invitation registry is enabled, export pre-granted IDs
+    # as an organized CSV so the admin can track whom they still need to invite.
+    users = list((await session.scalars(
+        select(User).where(User.premium_until > utcnow()).order_by(User.id.asc())
+    )).all())
+    rows = []
+    for u in users:
+        kind = await _premium_kind(session, u)
+        days = max(0, (u.premium_until - utcnow()).days) if u.premium_until else 0
+        rows.append([
+            u.id, u.username or "", " ".join(x for x in (u.first_name, u.last_name) if x),
+            kind, u.premium_until.isoformat() if u.premium_until else "", days,
+            f"https://t.me/{settings.bot_username}?start=pregrant_{u.id}",
+            "Needs verified invite-token support before sending",
+        ])
+    document = _csv_file(
+        "orbsat_premium_invite_tracking.csv",
+        ["telegram_id", "username", "display_name", "premium_status", "premium_until_utc",
+         "premium_days_left", "bot_link", "note"],
+        rows,
+    )
+    if cb.message:
+        await cb.message.answer_document(
+            document,
+            caption=f"Premium invitation tracking export · {len(rows)} row(s). These are tracking links, not claim-secure personalized invitations.",
+        )
+    await cb.answer("Export ready.")
 
 @router.callback_query(F.data == "admin:users")
 async def open_users(cb: CallbackQuery, session: AsyncSession):
