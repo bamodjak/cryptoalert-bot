@@ -4,6 +4,7 @@ import json
 from datetime import timedelta
 
 from aiogram import F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from redis.asyncio import Redis
 from sqlalchemy import func, select
@@ -167,7 +168,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
     key = f"adminflow:{m.from_user.id}"
     state_raw = await redis.get(key)
     if not state_raw:
-        return
+        raise SkipHandler
     if raw.lower() in {"/cancel", "cancel"}:
         await redis.delete(key)
         await m.answer("Cancelled. No changes were made.", reply_markup=_kb([_back()]))
