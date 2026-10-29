@@ -129,11 +129,21 @@ async def _set_flow(redis: Redis, admin_id: int, state: dict):
 
 
 
+def _safe_csv_cell(value: object) -> object:
+    """Neutralize spreadsheet formulas in untrusted text exported to CSV."""
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip(" \t\r\n")
+    if value[:1] in {"=", "+", "-", "@", "\t", "\r", "\n"} or stripped[:1] in {"=", "+", "-", "@"}:
+        return "'" + value
+    return value
+
+
 def _csv_file(filename: str, headers: list[str], rows: list[list[object]]) -> BufferedInputFile:
     stream = io.StringIO(newline="")
     writer = csv.writer(stream)
     writer.writerow(headers)
-    writer.writerows(rows)
+    writer.writerows([[_safe_csv_cell(value) for value in row] for row in rows])
     return BufferedInputFile(stream.getvalue().encode("utf-8-sig"), filename=filename)
 
 
