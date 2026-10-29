@@ -28,13 +28,14 @@ log = logging.getLogger("bot")
 
 COMMANDS = [
     BotCommand(command="start", description="Home & referral link"),
-    BotCommand(command="price", description="Current price, e.g. /price btc"),
-    BotCommand(command="alert", description="New alert, e.g. /alert btc > 70000"),
-    BotCommand(command="alerts", description="Your active alerts"),
-    BotCommand(command="gas", description="Ethereum gas now"),
-    BotCommand(command="gasalert", description="Gas alert in gwei (Premium)"),
-    BotCommand(command="premium", description="More alerts + gas alerts"),
-    BotCommand(command="help", description="How it works"),
+    BotCommand(command="create", description="Create an alert with buttons"),
+    BotCommand(command="price", description="Check a coin price"),
+    BotCommand(command="alerts", description="View or remove your alerts"),
+    BotCommand(command="gas", description="Check Ethereum network gas"),
+    BotCommand(command="premium", description="Unlock more alerts"),
+    BotCommand(command="help", description="How Orbsat works"),
+    BotCommand(command="terms", description="Service terms"),
+    BotCommand(command="paysupport", description="Payment help"),
 ]
 
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
@@ -117,7 +118,25 @@ async def main() -> None:
     dp.message.middleware(ThrottleMiddleware(redis))
     register_routers(dp)
 
-    await bot.set_my_commands(COMMANDS)
+    # Keep the public Telegram profile aligned with the product. These calls are
+    # idempotent and fail softly so a metadata permission issue never prevents startup.
+    try:
+        await bot.set_my_name(name="Orbsat Crypto Alerts")
+        await bot.set_my_description(
+            description=(
+                "Set simple crypto price alerts in a few taps. Choose a coin, choose whether "
+                "it should rise or fall, and pick a target. Get a Telegram notification when "
+                "your level is reached. Includes BTC, ETH, SOL and more, plus Ethereum gas alerts. "
+                "Free alerts available; optional Premium is paid in Telegram Stars. Market data may "
+                "be delayed. Not financial advice."
+            )
+        )
+        await bot.set_my_short_description(
+            short_description="Crypto price alerts in a few taps. Track BTC, ETH, SOL and more."
+        )
+        await bot.set_my_commands(COMMANDS)
+    except Exception:
+        log.exception("Could not update Telegram profile metadata; continuing startup")
 
     app = build_web_app(redis)
     stop = asyncio.Event()
