@@ -892,7 +892,9 @@ async def paid(m: Message, session: AsyncSession):
         return
     # Serialize concurrent purchases for the same user so two successful charges
     # cannot calculate the same expiry and overwrite one another.
-    u = await session.scalar(select(User).where(User.id == u.id).with_for_update())
+    u = await session.scalar(
+        select(User).where(User.id == u.id).with_for_update().execution_options(populate_existing=True)
+    )
     if u is None:
         raise RuntimeError("Payment user disappeared before entitlement update")
     days = settings.premium_days
