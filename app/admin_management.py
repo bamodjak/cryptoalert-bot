@@ -417,9 +417,9 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
         for invite in invites:
             link = f"https://t.me/{settings.bot_username}?start=invite_{invite.token}"
             invite_text = (
-                "🎁 You've been gifted Premium on Orbsat Crypto Alerts!\\n\\n"
+                "🎁 You've been gifted Premium on Orbsat Crypto Alerts!\n\n"
                 f"Your access is reserved for Telegram ID {invite.recipient_id}. "
-                f"Open this link and tap Start to use your Premium access:\\n{link}\\n\\n"
+                f"Open this link and tap Start to use your Premium access:\n{link}\n\n"
                 f"Premium duration added: {days} day(s)."
             )
             share_url = "https://t.me/share/url?url=" + quote(link, safe="") + "&text=" + quote(
@@ -427,8 +427,8 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
                 safe="",
             )
             await cb.message.answer(
-                f"<b>Invitation for Telegram ID {invite.recipient_id}</b>\\n\\n"
-                f"<code>{link}</code>\\n\\n{invite_text}",
+                f"<b>Invitation for Telegram ID {invite.recipient_id}</b>\n\n"
+                f"<code>{link}</code>\n\n{invite_text}",
                 reply_markup=_kb([[InlineKeyboardButton(text="📨 Share invitation", url=share_url)]]),
             )
     await cb.answer("Completed.")
