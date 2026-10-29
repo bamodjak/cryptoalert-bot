@@ -1,18 +1,20 @@
-# Crypto Alert Bot (Telegram)
+# Orbsat Crypto Alerts — Telegram Bot
 
-Telegram bot for crypto price and Ethereum gas alerts with a Telegram Stars Premium tier.
+**Crypto price alerts in a few taps.** People choose a coin, choose whether it should rise or fall, and select a target offset with inline buttons. No command syntax to memorize; commands remain available for power users.
 
-**Stack:** aiogram 3 · PostgreSQL 16 (SQLAlchemy 2 async + Alembic) · Redis 7 · Docker Compose · Prometheus metrics · health check · admin kill switch.
+**User experience**
+- Guided alert setup for BTC, ETH, SOL, BNB, XRP, DOGE, TON, TRX and AVAX
+- One-tap current BTC price, Ethereum gas, alert list and inline alert deletion
+- Clear onboarding, compact Telegram command menu, and branded bot name/profile descriptions updated on startup
+- Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts and Ethereum gas alerts
+- Referral links, payment support, service terms and concise notification copy
+- Price feed uses CoinGecko with CoinPaprika fallback for supported assets; values are cached in Redis
 
-## Features
-- `/price btc`, `/alert btc > 70000`, `/alert eth below 2.5k`, `/alerts`, `/del 12`
-- `/gas` and `/gasalert 0.5` (Premium) via a public Ethereum RPC
-- Free tier: 30 alerts. Premium (Telegram Stars, default 1,500 ⭐ / 30 days): 500 alerts + gas alerts
-- `/paysupport` and `/terms` (Telegram requires these for Stars payments)
-- Admin: `/kill`, `/resume`, `/stats`, `/refund <charge_id>`
-- Anti-spam throttle (30 msgs/min/user), auto-cleanup when a user blocks the bot
-- Prices from CoinGecko (cached in Redis, batched 100 coins per call)
-- `GET /health` (DB + Redis + worker freshness) and `GET /metrics` (Prometheus)
+**Operations and safety**
+- PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint and Prometheus metrics
+- Admin-only user management, Premium grants, reversible suspension, payment review, giveaways, broadcast confirmation and kill switch
+- Anti-spam throttling and idempotent Telegram Stars payment handling
+- Market data can be delayed; the bot is informational and does not provide financial advice
 
 ## Admin tools (feature branch)
 
