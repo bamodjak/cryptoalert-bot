@@ -46,8 +46,13 @@ COINS = (
 )
 PAIR_TO_COIN = {pair.upper(): (coin_id, symbol, name) for coin_id, symbol, name, pair in COINS if pair}
 DASHBOARDS_KEY = "live:dashboards"
-DASHBOARD_REFRESH_SECONDS = 3
+DASHBOARD_REFRESH_SECONDS = 10
 PRICE_TTL_SECONDS = 30
+
+# High-frequency market ticks stay in process memory. Writing every trade to
+# Redis exhausted the free request quota and made unrelated bot features fail.
+LIVE_QUOTES: dict[str, tuple[float, float]] = {}
+LAST_RENDERED_TEXT: dict[str, str] = {}
 
 
 def dashboard_keyboard(language: str) -> InlineKeyboardMarkup:
@@ -90,6 +95,7 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
             existing = json.loads(existing_raw)
             existing["language"] = user.language
             existing["last_text"] = None
+            LAST_RENDERED_TEXT.pop(str(user.id), None)
             await redis.hset(DASHBOARDS_KEY, str(user.id), json.dumps(existing))
             await message.answer(tr(user.language, "live_started_hint"))
             return
@@ -112,6 +118,7 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
         "language": user.language,
         "last_text": text,
     }
+    LAST_RENDERED_TEXT[str(user.id)] = text
     await redis.hset(DASHBOARDS_KEY, str(user.id), json.dumps(record))
     await message.answer(tr(user.language, "live_started_hint"))
 
@@ -139,6 +146,7 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
         return
     if not user.is_premium or user.suspended:
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
+        LAST_RENDERED_TEXT.pop(str(user.id), None)
         await callback.answer("Premium access is required.", show_alert=True)
         try:
             await callback.message.edit_text(tr(user.language, "live_premium_only"))
@@ -148,6 +156,7 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
     action = (callback.data or "").split(":", 1)[-1]
     if action == "close":
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
+        LAST_RENDERED_TEXT.pop(str(user.id), None)
         await callback.answer()
         try:
             await callback.message.edit_text(tr(user.language, "live_closed"))
@@ -179,13 +188,11 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
                             if price <= 0:
                                 continue
                             coin_id, _symbol, _name = coin
-                            await redis.set(f"live:px:{coin_id}", price, ex=PRICE_TTL_SECONDS)
-                            await redis.set(f"live:ts:{coin_id}", time.time(), ex=PRICE_TTL_SECONDS)
+                            LIVE_QUOTES[coin_id] = (price, time.time())
                             # USDT is a USD-pegged stablecoin and has no USDT/USDT market pair.
                             # Refresh its approximate peg alongside the USDC/USDT trade stream.
                             if str(event.get("s", "")).upper() == "USDCUSDT":
-                                await redis.set("live:px:tether", 1.0, ex=PRICE_TTL_SECONDS)
-                                await redis.set("live:ts:tether", time.time(), ex=PRICE_TTL_SECONDS)
+                                LIVE_QUOTES["tether"] = (1.0, time.time())
                         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                             continue
                     elif message.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
@@ -212,12 +219,11 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                     users = (await session.scalars(select(User).where(User.id.in_(ids)))).all() if ids else []
                     by_id = {user.id: user for user in users}
                 coin_ids = [coin_id for coin_id, *_ in COINS]
-                cached_values = await redis.mget([f"live:px:{cid}" for cid in coin_ids])
-                cached_times = await redis.mget([f"live:ts:{cid}" for cid in coin_ids])
+                # Quote updates are in-memory; do not issue Redis commands per market tick.
+                now = time.time()
                 quotes = {
-                    coin_id: (float(value), float(timestamp))
-                    for coin_id, value, timestamp in zip(coin_ids, cached_values, cached_times)
-                    if value is not None and timestamp is not None
+                    coin_id: quote for coin_id, quote in LIVE_QUOTES.items()
+                    if now - quote[1] <= PRICE_TTL_SECONDS
                 }
                 for user_key, raw in dashboards.items():
                     try:
@@ -226,6 +232,7 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                         user = by_id.get(user_id)
                         if user is None or user.suspended or not user.is_premium:
                             await redis.hdel(DASHBOARDS_KEY, user_key)
+                            LAST_RENDERED_TEXT.pop(user_key, None)
                             if user is not None:
                                 try:
                                     await bot.edit_message_text(
@@ -236,7 +243,7 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                                     pass
                             continue
                         text = format_dashboard(quotes, record.get("language", user.language))
-                        if text == record.get("last_text"):
+                        if text == LAST_RENDERED_TEXT.get(user_key, record.get("last_text")):
                             continue
                         try:
                             await bot.edit_message_text(
@@ -245,15 +252,16 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                                 reply_markup=dashboard_keyboard(record.get("language", user.language)),
                             )
                             record["last_text"] = text
-                            await redis.hset(DASHBOARDS_KEY, user_key, json.dumps(record))
+                            LAST_RENDERED_TEXT[user_key] = text
                         except TelegramBadRequest as exc:
                             if "message is not modified" in str(exc).lower():
                                 record["last_text"] = text
-                                await redis.hset(DASHBOARDS_KEY, user_key, json.dumps(record))
+                                LAST_RENDERED_TEXT[user_key] = text
                             else:
                                 log.debug("live dashboard edit rejected: %s", exc)
                         except TelegramForbiddenError:
                             await redis.hdel(DASHBOARDS_KEY, user_key)
+                            LAST_RENDERED_TEXT.pop(user_key, None)
                         except TelegramRetryAfter as exc:
                             await asyncio.sleep(min(float(exc.retry_after), 3.0))
                         except Exception:
