@@ -65,6 +65,7 @@ class Payment(Base):
     charge_id: Mapped[str] = mapped_column(String(128), unique=True)
     amount: Mapped[int] = mapped_column(Integer)  # in Stars
     refunded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    refund_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     premium_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entitlement_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     entitlement_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
