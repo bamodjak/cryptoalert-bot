@@ -26,6 +26,8 @@ from .db import (
 router = Router(name="admin_tools")
 public_router = Router(name="giveaway_public")
 router.message.filter(F.from_user.id.in_(settings.admin_id_set))
+router.message.filter(F.chat.type == "private")
+router.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
 
 
 async def audit(session: AsyncSession, admin_id: int, action: str, target: int | None = None, details: str | None = None) -> None:
