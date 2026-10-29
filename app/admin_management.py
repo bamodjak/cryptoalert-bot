@@ -207,7 +207,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
                 token = line.strip().lstrip("@")
                 if not token:
                     continue
-                if token.isdigit():
+                if token.isdigit() and int(token) > 0:
                     parsed.append(int(token))
                 else:
                     invalid.append(token)
@@ -228,13 +228,20 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
         existing = list((await session.scalars(select(User).where(User.id.in_(ids)))).all()) if ids else []
         found_ids = {u.id for u in existing}
         missing = sorted(set(ids) - found_ids)
-        payload = {"ids": sorted(found_ids), "days": days, "missing": missing, "invalid": state.get("invalid", [])}
+        payload = {
+            "ids": sorted(set(ids)),
+            "existing_ids": sorted(found_ids),
+            "days": days,
+            "missing": missing,
+            "invalid": state.get("invalid", []),
+        }
         await _set_flow(redis, m.from_user.id, {"state": "confirm_grant", "payload": payload})
         await m.answer(
-            f"<b>Confirm Premium extension</b>\nAccounts found: {len(found_ids)}\n"
-            f"Days to add per account: {days}\n"
-            f"Unknown IDs: {len(missing)}\nInvalid lines: {len(payload['invalid'])}\n\n"
-            "This adds days on top of any current Premium expiry. Confirm below to apply.",
+            f"<b>Confirm Premium grant</b>\nExisting accounts: {len(found_ids)}\n"
+            f"New account records to create: {len(missing)}\n"
+            f"Premium days to add per ID: {days}\nInvalid lines: {len(payload['invalid'])}\n\n"
+            "Unknown IDs will be added to the database and granted Premium now. "
+            "They can use the bot after they press Start. Confirm below to apply.",
             reply_markup=_kb([[InlineKeyboardButton(text="✅ Confirm", callback_data="um:confirm")],
                               [InlineKeyboardButton(text="❌ Cancel", callback_data="um:cancel")]]),
         )
@@ -268,12 +275,21 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
         await cb.answer("No pending change.", show_alert=True)
         return
     payload = state["payload"]
-    ids, days = payload["ids"], int(payload["days"])
+    ids, days = sorted(set(payload["ids"])), int(payload["days"])
     if not ids:
         await redis.delete(key)
-        await cb.answer("No registered users matched.", show_alert=True)
+        await cb.answer("No valid Telegram IDs were supplied.", show_alert=True)
         return
     users = list((await session.scalars(select(User).where(User.id.in_(ids)).with_for_update())).all())
+    existing_ids = {u.id for u in users}
+    new_ids = [uid for uid in ids if uid not in existing_ids]
+    for uid in new_ids:
+        # A Telegram user ID is sufficient to prepare an account and entitlement.
+        # Telegram may not let the bot DM this user until they press Start.
+        users.append(User(id=uid, username=None, first_name=None, last_name=None))
+    if new_ids:
+        session.add_all([u for u in users if u.id in set(new_ids)])
+        await session.flush()
     for u in users:
         if u.id in settings.admin_id_set and u.id != settings.owner_id:
             continue
@@ -285,9 +301,11 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
     await redis.delete(key)
     updated = len([u for u in users if u.id not in settings.admin_id_set or u.id == settings.owner_id])
     missing = payload.get("missing", [])
-    result = f"✅ Premium extended by {days} day(s) for {updated} account(s)."
+    result = f"✅ Premium added for {updated} account(s): {days} day(s) each."
+    if new_ids:
+        result += f"\nCreated {len(new_ids)} new account record(s) from Telegram IDs."
     if missing:
-        result += f"\nNot found: {len(missing)} ID(s)."
+        result += f"\nNew IDs created: {len(missing)}."
     if payload.get("invalid"):
         result += f"\nIgnored non-numeric lines: {len(payload['invalid'])}."
     if cb.message:
