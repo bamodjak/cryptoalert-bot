@@ -9,7 +9,8 @@
 - Clear onboarding, compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
 - Referral links and join counts, payment support, service terms and concise notification copy
-- Price feed uses CoinGecko with CoinPaprika fallback for supported assets; values are cached in Redis
+- Price feed uses CoinGecko with CoinPaprika fallback for supported assets; provider quotes are cached in Redis
+- Premium live-market ticks are kept in process memory and dashboard edits are coalesced to a 10-second cadence to avoid burning Redis request quota on every exchange trade
 
 **Operations and safety**
 - PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint and Prometheus metrics
