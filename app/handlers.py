@@ -668,7 +668,7 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
                 word = "above" if a.op == ">" else "below"
                 value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
                 paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
-            lines.append(f"{paused}#{a.id} {a.symbol} {word} {value}")
+                lines.append(f"{paused}#{a.id} {a.symbol} {word} {value}")
             text = "🔔 <b>Your active alerts</b>\n" + "\n".join(lines)
         else:
             text = tr(u.language, "no_alerts")
