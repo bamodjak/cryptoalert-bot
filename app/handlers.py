@@ -30,10 +30,10 @@ admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
 
 HELP = (
-    "<b>Orbsat Crypto Alerts</b>\n"
-    "Smart price alerts, without command syntax. Choose a coin, pick a target, and we will notify you.\n\n"
-    "🔔 <b>Create an alert</b> from the button below.\n"
-    "📈 Check BTC, ⛽ Ethereum gas, manage alerts, or explore Premium from the menu.\n\n"
+    "<b>Welcome to Orbsat Crypto Alerts 👋</b>\n"
+    "Your crypto alerts, made simple. No command syntax to learn — just tap through the options.\n\n"
+    "🔔 <b>Create an alert</b> and choose a coin, direction, and target.\n"
+    "📊 Check BTC, manage alerts, invite friends, or compare plans below.\n\n"
     f"Free: up to {settings.free_alert_limit} active alerts. Premium: {settings.premium_alert_limit} alerts + Ethereum gas alerts for "
     f"{settings.premium_price_stars} ⭐ / {settings.premium_days} days.\n\n"
     "<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>"
@@ -314,7 +314,9 @@ def create_coin_keyboard(user_id: int) -> InlineKeyboardMarkup:
     coins = [
         ("₿ Bitcoin", "btc"), ("Ξ Ethereum", "eth"), ("◎ Solana", "sol"),
         ("BNB", "bnb"), ("XRP", "xrp"), ("DOGE", "doge"),
-        ("TON", "ton"), ("TRX", "trx"), ("AVAX", "avax"),
+        ("ADA", "ada"), ("TON", "ton"), ("TRX", "trx"),
+        ("AVAX", "avax"), ("DOT", "dot"), ("LINK", "link"),
+        ("LTC", "ltc"), ("USDT", "usdt"), ("USDC", "usdc"),
     ]
     rows = [[InlineKeyboardButton(text=label, callback_data=f"create:coin:{symbol}") for label, symbol in coins[i:i + 3]] for i in range(0, len(coins), 3)]
     rows.append([InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")])
