@@ -29,8 +29,8 @@ def _health_handler(app):
     raise AssertionError("GET /health route was not registered")
 
 
-def _call_health(monkeypatch, redis, last_success):
-    monkeypatch.setattr(main, "Session", FakeSession)
+def _call_health(monkeypatch, redis, last_success, session_factory=FakeSession):
+    monkeypatch.setattr(main, "Session", session_factory)
     monkeypatch.setattr(main.worker, "last_success", last_success)
 
     async def call():
@@ -66,6 +66,28 @@ def test_health_fails_when_redis_dependency_is_unavailable(monkeypatch):
         "ok": False,
         "error": "dependency check failed",
     }
+
+
+def test_health_fails_when_database_dependency_is_unavailable(monkeypatch):
+    class BrokenSession(FakeSession):
+        async def execute(self, statement):
+            raise RuntimeError("Database unavailable")
+
+    response = _call_health(monkeypatch, FakeRedis(), time.time(), BrokenSession)
+
+    assert response.status == 503
+    assert json.loads(response.text) == {
+        "ok": False,
+        "error": "dependency check failed",
+    }
+
+
+def test_health_rejects_an_alert_worker_that_has_gone_stale(monkeypatch):
+    stale_after = main.settings.check_interval * 5
+    response = _call_health(monkeypatch, FakeRedis(), time.time() - stale_after - 1)
+
+    assert response.status == 503
+    assert json.loads(response.text) == {"ok": False, "error": "alert worker stale"}
 
 
 def test_render_heartbeat_probes_health_endpoint_instead_of_root():
