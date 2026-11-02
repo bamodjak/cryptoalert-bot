@@ -14,12 +14,14 @@ permissions:
 
 concurrency:
   group: render-free-service-heartbeat
-  cancel-in-progress: true
+  # A cold-start check may take longer than the five-minute schedule interval.
+  # Do not cancel the active recovery attempt when the next scheduled run queues.
+  cancel-in-progress: false
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       - name: Check Render application health and retry cold starts
         shell: bash
@@ -27,9 +29,9 @@ jobs:
           SERVICE_URL: https://cryptoalert-bot-i0ev.onrender.com
         run: |
           set -u
-          for attempt in 1 2 3 4 5; do
-            echo "Health check attempt ${attempt}/5"
-            status="$(curl --silent --show-error --location --max-time 20 \
+          for attempt in 1 2 3 4; do
+            echo "Health check attempt ${attempt}/4"
+            status="$(curl --silent --show-error --location --max-time 60 \
               --output /tmp/render-response.txt --write-out '%{http_code}' \
               "${SERVICE_URL}/health" 2>/tmp/curl-error.txt || true)"
             if [[ "${status}" == "200" ]]; then
@@ -40,7 +42,7 @@ jobs:
             echo "Application health is not ready (status=${status:-none})"
             cat /tmp/render-response.txt 2>/dev/null || true
             cat /tmp/curl-error.txt || true
-            if [[ "${attempt}" -lt 5 ]]; then sleep 15; fi
+            if [[ "${attempt}" -lt 4 ]]; then sleep 15; fi
           done
           echo "Render application health did not recover after retries."
           exit 1
