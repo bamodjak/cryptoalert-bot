@@ -94,3 +94,14 @@ def test_render_heartbeat_probes_health_endpoint_instead_of_root():
     workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
 
     assert '"${SERVICE_URL}/health"' in workflow_path.read_text()
+
+
+def test_render_heartbeat_allows_cold_start_recovery_without_canceling_active_run():
+    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
+    workflow = workflow_path.read_text()
+
+    assert "timeout-minutes: 6" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "for attempt in 1 2 3 4; do" in workflow
+    assert "--max-time 60" in workflow
+    assert 'if [[ "${attempt}" -lt 4 ]]; then sleep 15; fi' in workflow
