@@ -105,3 +105,11 @@ def test_render_heartbeat_allows_cold_start_recovery_without_canceling_active_ru
     assert "for attempt in 1 2 3 4; do" in workflow
     assert "--max-time 60" in workflow
     assert 'if [[ "${attempt}" -lt 4 ]]; then sleep 15; fi' in workflow
+
+
+def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
+    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
+    workflow = workflow_path.read_text()
+
+    assert '- cron: "2-59/5 * * * *"' in workflow
+    assert "Avoid top-of-hour contention" in workflow
