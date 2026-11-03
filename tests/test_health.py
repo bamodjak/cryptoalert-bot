@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 from pathlib import Path
 
@@ -100,11 +101,11 @@ def test_render_heartbeat_allows_cold_start_recovery_without_canceling_active_ru
     workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
     workflow = workflow_path.read_text()
 
-    assert "timeout-minutes: 6" in workflow
+    assert "timeout-minutes: 5" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "for attempt in 1 2 3 4; do" in workflow
     assert "--max-time 60" in workflow
-    assert 'if [[ "${attempt}" -lt 4 ]]; then sleep 15; fi' in workflow
+    assert 'if [[ "${attempt}" -lt 4 ]]; then sleep 5; fi' in workflow
 
 
 def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
@@ -113,3 +114,17 @@ def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
 
     assert '- cron: "2-59/5 * * * *"' in workflow
     assert "top of each hour" in workflow
+
+
+def test_render_heartbeat_retry_budget_fits_five_minute_schedule():
+    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
+    workflow = workflow_path.read_text()
+
+    request_timeout = int(re.search(r"--max-time (\\d+)", workflow).group(1))
+    retry_delay = int(re.search(r"sleep (\\d+)", workflow).group(1))
+    job_timeout = int(re.search(r"timeout-minutes: (\\d+)", workflow).group(1))
+    max_attempts = 4
+    worst_case_seconds = max_attempts * request_timeout + (max_attempts - 1) * retry_delay
+
+    assert worst_case_seconds < 5 * 60
+    assert worst_case_seconds < job_timeout * 60
