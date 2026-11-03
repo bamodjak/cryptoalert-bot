@@ -112,4 +112,4 @@ def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
     workflow = workflow_path.read_text()
 
     assert '- cron: "2-59/5 * * * *"' in workflow
-    assert "Avoid top-of-hour contention" in workflow
+    assert "top of each hour" in workflow
