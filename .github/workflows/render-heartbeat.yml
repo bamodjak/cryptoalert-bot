@@ -6,7 +6,8 @@ on:
       - main
   schedule:
     # Best-effort inbound traffic to prevent the free web service from idling.
-    - cron: "*/5 * * * *"
+    # GitHub warns that scheduled runs can be delayed or dropped at the top of each hour.
+    - cron: "2-59/5 * * * *"
   workflow_dispatch:
 
 permissions:
