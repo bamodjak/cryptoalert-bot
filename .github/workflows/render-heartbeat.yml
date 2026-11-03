@@ -22,7 +22,7 @@ concurrency:
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
       - name: Check Render application health and retry cold starts
         shell: bash
@@ -43,7 +43,7 @@ jobs:
             echo "Application health is not ready (status=${status:-none})"
             cat /tmp/render-response.txt 2>/dev/null || true
             cat /tmp/curl-error.txt || true
-            if [[ "${attempt}" -lt 4 ]]; then sleep 15; fi
+            if [[ "${attempt}" -lt 4 ]]; then sleep 5; fi
           done
           echo "Render application health did not recover after retries."
           exit 1
