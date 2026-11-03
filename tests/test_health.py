@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 import time
 from pathlib import Path
 
@@ -118,11 +117,11 @@ def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
 
 def test_render_heartbeat_retry_budget_fits_five_minute_schedule():
     workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
-    workflow = workflow_path.read_text()
+    lines = workflow_path.read_text().splitlines()
 
-    request_timeout = int(re.search(r"--max-time (\\d+)", workflow).group(1))
-    retry_delay = int(re.search(r"sleep (\\d+)", workflow).group(1))
-    job_timeout = int(re.search(r"timeout-minutes: (\\d+)", workflow).group(1))
+    request_timeout = int(next(line for line in lines if "--max-time" in line).split("--max-time", 1)[1].split()[0])
+    retry_delay = int(next(line for line in lines if "sleep " in line).split("sleep ", 1)[1].split()[0].rstrip(";"))
+    job_timeout = int(next(line for line in lines if "timeout-minutes:" in line).split("timeout-minutes:", 1)[1].strip())
     max_attempts = 4
     worst_case_seconds = max_attempts * request_timeout + (max_attempts - 1) * retry_delay
 
