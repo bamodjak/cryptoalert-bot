@@ -71,7 +71,7 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
         ],
         [
             InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
-            InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:home"),
+            InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:help"),
         ],
         [InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")],
     ]
@@ -295,7 +295,7 @@ async def cmd_help(m: Message, session: AsyncSession):
     await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
 
 
-@router.callback_query(F.data.in_({"nav:home", "nav:back"}))
+@router.callback_query(F.data.in_({"nav:home", "nav:back", "nav:help"}))
 async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     u = await get_user(session, cb.from_user)
     if cb.message:
