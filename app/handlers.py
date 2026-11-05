@@ -16,6 +16,7 @@ from aiogram.types import (
     LabeledPrice,
     Message,
     PreCheckoutQuery,
+    ReplyKeyboardRemove,
 )
 from redis.asyncio import Redis
 from sqlalchemy import delete, func, select
@@ -30,7 +31,7 @@ from .i18n import tr, welcome_text
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
 from .prices import PriceError, PriceService
 from .users import get_user
-from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard, persistent_menu_keyboard
+from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard
 from .alert_handlers import (
     alert_router, active_count, alert_history_text, claim_create_action,
     create_coin_keyboard, edit_if_changed,
@@ -53,6 +54,7 @@ admin.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message
 async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user, command.args)
     start_args = command.args or ""
+    premium_note = ""
     if start_args.startswith("invite_"):
         token = start_args.removeprefix("invite_").strip()
         invite = await session.scalar(select(PremiumInvite).where(PremiumInvite.token == token))
@@ -70,66 +72,17 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
             if invite.recipient_started_at is None:
                 invite.recipient_started_at = utcnow()
             premium_note = (
-                "\n\n🎁 <b>Your invitation is confirmed!</b> "
+                "\\n\\n🎁 <b>Your invitation is confirmed!</b> "
                 "Your Premium access is attached to this Telegram account."
             )
-            await m.answer(
-                welcome_text(u.language) + premium_note,
-                reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
-            )
-            await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
-            return
+
+    # Remove legacy reply keyboards for existing users. Navigation now has one source:
+    # the inline dashboard attached to the welcome message.
+    await m.answer(welcome_text(u.language) + premium_note, reply_markup=ReplyKeyboardRemove())
     await m.answer(
-        welcome_text(u.language),
+        "اختر إجراءً للمتابعة:" if u.language == "ar" else "Choose an action:",
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
-    await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
-
-
-@router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
-async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService):
-    """Handle visible quick-action labels without requiring slash-command syntax."""
-    u = await get_user(session, m.from_user)
-    action_label = (m.text or "").strip()
-    action = {
-        tr(language, key): key
-        for language in ("en", "ar")
-        for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
-    }.get(action_label)
-    if action == "quick_dashboard":
-        await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
-    elif action == "quick_markets":
-        try:
-            text = await _market_snapshot(prices, u.language)
-        except PriceError:
-            text = tr(u.language, "market_snapshot_unavailable")
-        await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
-    elif action == "quick_alerts":
-        rows = (await session.scalars(
-            select(Alert).where(Alert.user_id == u.id, Alert.active.is_(True)).order_by(Alert.id)
-        )).all()
-        if not rows:
-            await m.answer(tr(u.language, "no_alerts"), reply_markup=nav_keyboard(u.id, lang=u.language))
-            return
-        lines = []
-        for alert in rows:
-            word = tr(u.language, "above" if alert.op == ">" else "below")
-            value = f"{alert.target:g} gwei" if alert.kind == "gas" else fmt_usd(alert.target)
-            paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if alert.entitlement_paused else ""
-            lines.append(f"{paused}#{alert.id} {alert.symbol} {word} {value}")
-        await m.answer(
-            tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
-            reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
-        )
-    elif action == "quick_premium":
-        if u.id == settings.owner_id:
-            await m.answer(tr(u.language, "premium_owner"))
-            return
-        status = (
-            "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
-            if u.is_premium and u.premium_until else ""
-        )
-        await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.message(Command("language"))
