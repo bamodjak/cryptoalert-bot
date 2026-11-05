@@ -5,7 +5,6 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -13,10 +12,8 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
     LabeledPrice,
     Message,
-    ReplyKeyboardMarkup,
     PreCheckoutQuery,
 )
 from redis.asyncio import Redis
@@ -34,6 +31,7 @@ from .prices import PriceError, PriceService
 from .users import get_user
 from .asset_detail import asset_detail_keyboard, asset_detail_text
 from .advisor import AdvisorUnavailable, build_advisory, format_advisory
+from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard, persistent_menu_keyboard
 
 class AlertCustomInput(StatesGroup):
     waiting = State()
@@ -49,95 +47,6 @@ admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
 admin.message.filter(F.chat.type == "private")
 admin.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
-
-
-def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> InlineKeyboardMarkup:
-    """Compact, task-first navigation. Administrative controls remain owner-only."""
-    rows = [
-        [InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open")],
-        [
-            InlineKeyboardButton(text=tr(lang, "market"), callback_data="dash:market"),
-            InlineKeyboardButton(text=tr(lang, "movers"), callback_data="dash:movers"),
-        ],
-        [
-            InlineKeyboardButton(text=tr(lang, "crypto_prices"), callback_data="prices:open"),
-            InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
-        ],
-        [InlineKeyboardButton(text=tr(lang, "watchlist"), callback_data="wl:open")],
-        [InlineKeyboardButton(text=tr(lang, "advisor"), callback_data="advisor:open")],
-        [
-            InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
-            InlineKeyboardButton(text=tr(lang, "premium"), callback_data="dash:premium"),
-        ],
-        [
-            InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
-            InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:help"),
-        ],
-        [
-            InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose"),
-            InlineKeyboardButton(text=tr(lang, "settings"), callback_data="settings:open"),
-        ],
-    ]
-    if user_id in settings.admin_id_set:
-        rows.append([InlineKeyboardButton(text="🛡 Admin Panel", callback_data="admin:panel")])
-    if show_back:
-        rows.append([InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def persistent_menu_keyboard(language: str = "en") -> ReplyKeyboardMarkup:
-    """Short, localized quick navigation; labels route to real bot actions."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=tr(language, "quick_dashboard"), style="primary"),
-                KeyboardButton(text=tr(language, "quick_markets"), style="primary"),
-            ],
-            [
-                KeyboardButton(text=tr(language, "quick_alerts")),
-                KeyboardButton(text=tr(language, "quick_premium"), style="success"),
-            ],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="Orbsat · Dashboard, markets and alerts" if language != "ar" else "Orbsat · السوق والتنبيهات",
-    )
-
-
-async def edit_message_if_changed(
-    message: Message,
-    text: str,
-    reply_markup: InlineKeyboardMarkup | None = None,
-) -> None:
-    """Ignore Telegram's harmless no-op edit response; propagate real edit failures."""
-    try:
-        await message.edit_text(text, reply_markup=reply_markup)
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
-
-
-
-def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
-    rows = []
-    now = utcnow()
-    for alert in alerts[:20]:
-        control = (
-            InlineKeyboardButton(text=tr(lang, "alert_resume"), callback_data=f"alertresume:{alert.id}")
-            if alert.snoozed_until and alert.snoozed_until > now
-            else InlineKeyboardButton(text=tr(lang, "alert_snooze_1h"), callback_data=f"alertsnooze:{alert.id}")
-        )
-        rows.append([
-            InlineKeyboardButton(text=tr(lang, "alert_edit"), callback_data=f"alertedit:{alert.id}"),
-            control,
-            InlineKeyboardButton(text=f"✖ #{alert.id}", callback_data=f"alertdel:{alert.id}"),
-        ])
-    rows.append([InlineKeyboardButton(text=tr(lang, "alert_history"), callback_data="alerts:history")])
-    rows.append([
-        InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open"),
-        InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home"),
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def active_count(session: AsyncSession, user_id: int) -> int:
