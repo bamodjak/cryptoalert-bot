@@ -45,6 +45,7 @@ def test_message_trace_records_handler_failure_and_reraises(caplog):
         text="/start",
         chat=SimpleNamespace(type="private"),
         from_user=SimpleNamespace(id=987654321),
+        answer=AsyncMock(),
     )
 
     async def handler(received_event, data):
@@ -58,6 +59,8 @@ def test_message_trace_records_handler_failure_and_reraises(caplog):
             asyncio.run(run())
 
     assert "telegram_message failed command=/start chat_type=private" in caplog.text
+    event.answer.assert_awaited_once()
+    assert "Please try /start again" in event.answer.await_args.args[0]
     assert "987654321" not in caplog.text
 
 
