@@ -114,3 +114,30 @@ class ThrottleMiddleware(BaseMiddleware):
                 await event.answer("Slow down a little, try again in a minute.")
             return None
         return await handler(event, data)
+
+
+def safe_message_action(message_text: str | None) -> str:
+    """Return a command label only; never include arguments or user-supplied text in logs."""
+    first = (message_text or "").strip().split(maxsplit=1)
+    if not first:
+        return "message"
+    command = first[0].split("@", 1)[0].lower()
+    if command.startswith("/") and len(command) <= 33 and command[1:].replace("_", "").isalnum():
+        return command
+    return "message"
+
+
+class MessageTraceMiddleware(BaseMiddleware):
+    """Trace inbound message dispatch without recording message bodies or user identifiers."""
+
+    async def __call__(self, handler, event: Message, data: dict) -> Any:
+        action = safe_message_action(event.text)
+        chat_type = getattr(getattr(event, "chat", None), "type", "unknown")
+        log.info("telegram_message received command=%s chat_type=%s", action, chat_type)
+        try:
+            result = await handler(event, data)
+        except Exception:
+            log.exception("telegram_message failed command=%s chat_type=%s", action, chat_type)
+            raise
+        log.info("telegram_message completed command=%s chat_type=%s", action, chat_type)
+        return result
