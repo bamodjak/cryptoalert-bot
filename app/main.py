@@ -39,6 +39,7 @@ COMMANDS = [
     BotCommand(command="movers", description="Top 24-hour market movers"),
     BotCommand(command="live", description="Premium live market dashboard"),
     BotCommand(command="alerts", description="View or remove your alerts"),
+    BotCommand(command="history", description="View recently triggered alerts"),
     BotCommand(command="watchlist", description="Track your favourite assets"),
     BotCommand(command="signals", description="Premium quantitative market research"),
     BotCommand(command="gas", description="Check Ethereum network gas"),
