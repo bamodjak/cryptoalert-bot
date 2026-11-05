@@ -163,7 +163,7 @@ async def cb_language(cb: CallbackQuery, session: AsyncSession):
     else:
         return
     if cb.message:
-        await cb.message.edit_text(text, reply_markup=keyboard)
+        await edit_message_if_changed(cb.message, text, reply_markup=keyboard)
 
 
 @router.message(Command("help"))
@@ -197,7 +197,7 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
         f"{tr(u.language, 'friends_joined', count=u.referrals_count)}"
     )
     if cb.message:
-        await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
+        await edit_message_if_changed(cb.message, text, reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
     await cb.answer(tr(u.language, "affiliation_ready"))
 
 
@@ -220,7 +220,8 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
         try:
             payload = await prices.top_coins()
             text = crypto_prices_text(payload, u.language)
-            return await cb.message.edit_text(text, reply_markup=crypto_prices_keyboard(payload["coins"], u.language))
+            await edit_message_if_changed(cb.message, text, reply_markup=crypto_prices_keyboard(payload["coins"], u.language))
+            return
         except PriceError:
             text = tr(u.language, "crypto_prices_unavailable")
     elif action == "gas":
