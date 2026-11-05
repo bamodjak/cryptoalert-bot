@@ -43,6 +43,9 @@ class CallbackTraceMiddleware(BaseMiddleware):
         try:
             result = await handler(event, data)
         except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                log.debug("telegram_callback no-op id=%s action=%s", callback_id, action)
+                return None
             if "query is too old" in str(exc).lower():
                 log.warning("telegram_callback expired id=%s action=%s", callback_id, action)
                 if event.message:
