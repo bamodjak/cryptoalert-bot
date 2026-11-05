@@ -211,7 +211,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
         welcome_text(u.language),
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
-    await m.answer("Use the quick actions below to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+    await m.answer("Quick actions stay pinned below — use them to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
 
 
 @router.message(F.text.in_({"🏠 Dashboard", "📊 Markets", "🔔 Alerts", "⭐ Premium"}))
