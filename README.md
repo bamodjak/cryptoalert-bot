@@ -96,3 +96,5 @@ These features are implemented as a modular monolith. The application keeps one 
 Database upgrades are additive. The alert snooze and user preference migrations preserve existing rows and values.
 
 The live trade stream and dashboard updater run under one Redis-elected runtime lease, keeping their in-memory quote state together during overlapping deployments.
+
+Users can independently enable or disable price-alert and gas-alert categories in `/settings`; disabled categories retain their configured alerts. Premium research screens show the rule drivers behind each signal and an in-sample historical directional evaluation with sample counts and explicit fee/slippage limitations.
