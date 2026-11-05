@@ -66,6 +66,10 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 await m.answer(
                     "This Premium invitation was created for a different Telegram account. "
                     "Please switch to the account whose ID received the invitation, or contact the sender.",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                await m.answer(
+                    "Choose an action:" if u.language != "ar" else "اختر إجراءً للمتابعة:",
                     reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
                 )
                 return
