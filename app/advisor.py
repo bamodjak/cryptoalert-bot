@@ -246,6 +246,27 @@ async def build_advisory(http: aiohttp.ClientSession, redis: Redis) -> list[dict
 def format_advisory(rows: list[dict], language: str = "en") -> str:
     arabic = language == "ar"
     title = "🧠 <b>ORBSAT · PREMIUM QUANT DESK</b>" if not arabic else "🧠 <b>ORBSAT · مكتب التحليل الكمي بريميوم</b>"
+    reason_labels = {
+        "trend_bullish": ("Price above aligned EMA20/EMA50", "السعر أعلى من متوسطي EMA20 وEMA50 المتوافقين"),
+        "trend_above_ema20": ("Price above EMA20", "السعر أعلى من EMA20"),
+        "trend_bearish": ("Price below aligned EMA20/EMA50", "السعر أسفل من متوسطي EMA20 وEMA50 المتوافقين"),
+        "trend_below_ema20": ("Price below EMA20", "السعر أسفل من EMA20"),
+        "momentum_24h_positive": ("Positive 24h momentum", "زخم إيجابي خلال 24 ساعة"),
+        "momentum_24h_negative": ("Negative 24h momentum", "زخم سلبي خلال 24 ساعة"),
+        "momentum_24h_neutral": ("Flat 24h momentum", "زخم شبه مستقر خلال 24 ساعة"),
+        "momentum_7d_positive": ("Positive 7d momentum", "زخم إيجابي خلال 7 أيام"),
+        "momentum_7d_negative": ("Negative 7d momentum", "زخم سلبي خلال 7 أيام"),
+        "momentum_7d_neutral": ("Flat 7d momentum", "زخم شبه مستقر خلال 7 أيام"),
+        "rsi_supportive": ("RSI supports trend", "مؤشر RSI يدعم الاتجاه"),
+        "rsi_extreme": ("RSI at an extreme", "مؤشر RSI عند مستوى متطرف"),
+        "rsi_neutral": ("RSI is neutral", "مؤشر RSI محايد"),
+        "volume_confirmation": ("Above-average volume confirms upside", "حجم تداول أعلى من المتوسط يدعم الصعود"),
+        "volume_no_confirmation": ("No bullish volume confirmation", "لا يوجد تأكيد صعودي من حجم التداول"),
+        "volatility_high": ("Very high volatility caps the score", "التقلب الشديد يحد من درجة الإشارة"),
+        "volatility_elevated": ("Elevated volatility", "تقلب مرتفع"),
+        "volatility_moderate": ("Moderate volatility", "تقلب متوسط"),
+        "volatility_calm": ("Calm volatility", "تقلب منخفض"),
+    }
     lines = [title, "4H OHLCV · multi-horizon trend · RSI · ATR · volume · volatility regime", ""]
     for row in rows:
         stance = row["stance"]
@@ -258,10 +279,26 @@ def format_advisory(rows: list[dict], language: str = "en") -> str:
         )
         if row["invalidation"] is not None:
             line += f"\nReference invalidation ${row['invalidation']:,.6g} · 2.5 ATR objective ${row['objective']:,.6g}"
+        reasons = [reason_labels[key][1 if arabic else 0] for key in row.get("reasons", []) if key in reason_labels]
+        if reasons:
+            line += ("\nالأسباب: " if arabic else "\nWhy: ") + "؛ ".join(reasons) if arabic else "\nWhy: " + "; ".join(reasons)
+        history = row.get("history")
+        if history:
+            win_rate = history["win_rate"] * 100
+            average_return = history["average_return"] * 100
+            if arabic:
+                line += f"\nتقييم تاريخي {history['horizon_hours']}س: {history['samples']} إشارة · نجاح {win_rate:.0f}% · متوسط العائد الاتجاهي {average_return:+.2f}%"
+            else:
+                line += f"\nHistorical {history['horizon_hours']}h: {history['samples']} signals · {win_rate:.0f}% wins · avg directional return {average_return:+.2f}%"
+        elif arabic:
+            line += "\nالتقييم التاريخي: عينة إشارات غير كافية"
+        else:
+            line += "\nHistorical evaluation: insufficient signal sample"
         lines.append(line)
     lines.extend([
         "",
         "Method: transparent, volatility-aware rule ensemble over 4h exchange candles. Scores are heuristic ranks, NOT probabilities.",
+        "Historical evaluation is an in-sample directional check on prior closed candles; it is not a forecast and excludes fees, slippage and execution constraints.",
         "Risk controls: high-volatility regime suppresses conviction; neutral signals do not force a trade. Levels are research references, not execution instructions.",
         "Data source: Binance public market data · cached 5 min.",
         "<i>Research and educational market analysis only. Not individualized financial advice. No return is guaranteed; verify fees, slippage and liquidity.</i>",
