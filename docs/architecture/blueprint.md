@@ -107,7 +107,7 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 - `main.py` is the composition root: it creates infrastructure, registers routers, starts workers and exposes health/metrics endpoints.
 - `assets.py` is the dependency-light canonical asset registry; `prices.py` owns provider access and normalization.
 - `market_handlers.py` owns market and advisor Telegram routes; `market_views.py` owns provider-neutral market presentation.
-- `watchlists.py`, `preferences.py` and `live_dashboard.py` own their feature routers and workflows.
+- `alert_handlers.py`, `watchlists.py`, `preferences.py` and `live_dashboard.py` own their feature routers and workflows.
 - `keyboards.py` owns shared Telegram navigation and alert keyboards; `users.py` owns Telegram-user lifecycle synchronization.
 - `advisor.py` owns quantitative scoring, explanations and historical evaluation; `worker.py` owns scheduled alert evaluation.
-- `handlers.py` remains the compatibility/root router for alert creation and management, billing, referrals and legacy admin commands. New features should be added as dedicated feature modules and included from the composition root rather than expanding this file.
+- `handlers.py` is the compatibility/root router for home/account navigation, billing, referrals and legacy admin commands; it includes the market and alert feature routers. New features should be added as dedicated feature modules and included from the composition root rather than expanding this file.
