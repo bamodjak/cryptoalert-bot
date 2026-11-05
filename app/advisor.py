@@ -26,6 +26,11 @@ UNIVERSE = tuple(
 CACHE_KEY = "advisor:premium:latest"
 CACHE_SECONDS = 300
 COINGECKO_IDS = {asset.symbol.upper(): asset.coin_id for asset in CORE_ASSETS}
+KRAKEN_PAIRS = {
+    "BTC": "XBTUSD", "ETH": "ETHUSD", "SOL": "SOLUSD",
+    "BNB": "BNBUSD", "XRP": "XRPUSD", "DOGE": "DOGEUSD",
+    "AVAX": "AVAXUSD", "LINK": "LINKUSD",
+}
 
 
 class AdvisorUnavailable(Exception):
@@ -244,6 +249,40 @@ async def _fetch_one(http: aiohttp.ClientSession, symbol: str) -> dict | None:
                 "Advisor candle provider failed symbol=%s host=%s status=%s error=%s",
                 symbol, base.split("//", 1)[-1], status or "-", type(exc).__name__,
             )
+    # Kraken is an independent exchange source. Its public REST endpoint
+    # supports 4h candles and returns up to 720 observations without an API key.
+    asset_symbol = symbol.removesuffix("USDT").upper()
+    kraken_pair = KRAKEN_PAIRS.get(asset_symbol)
+    if kraken_pair:
+        try:
+            async with http.get(
+                "https://api.kraken.com/0/public/OHLC",
+                params={"pair": kraken_pair, "interval": 240},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                response.raise_for_status()
+                payload = await response.json()
+            if payload.get("error"):
+                raise ValueError("Kraken returned: " + ", ".join(payload["error"]))
+            result_sets = payload.get("result", {})
+            candle_key = next((key for key in result_sets if key != "last"), None)
+            raw_rows = result_sets.get(candle_key, []) if candle_key else []
+            # Kraken row: time, open, high, low, close, VWAP, volume, count.
+            # Convert to the six-column OHLCV shape consumed by this analyzer.
+            rows = [
+                [row[0], row[1], row[2], row[3], row[4], row[6]]
+                for row in raw_rows
+                if isinstance(row, (list, tuple)) and len(row) >= 8
+            ]
+            result = _analyse_klines(asset_symbol, rows)
+            result["source"] = "kraken"
+            log.info("Advisor history loaded via Kraken fallback symbol=%s pair=%s candles=%d",
+                     asset_symbol, kraken_pair, len(rows))
+            return result
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, KeyError, IndexError) as exc:
+            log.warning("Advisor Kraken OHLC fallback failed symbol=%s pair=%s status=%s error=%s",
+                        asset_symbol, kraken_pair, getattr(exc, "status", "-"), type(exc).__name__)
+
     # Binance can return HTTP 418 from cloud-hosted regions. Fall back to
     # CoinGecko's public 30-day OHLC endpoint, which provides 4h candles on
     # the free/demo tier. OHLC has no volume field, so volume confirmation is
@@ -351,7 +390,7 @@ def format_advisory(rows: list[dict], language: str = "en") -> str:
         "Method: transparent, volatility-aware rule ensemble over 4h exchange candles. Scores are heuristic ranks, NOT probabilities.",
         "Historical evaluation is an in-sample directional check on prior closed candles; it is not a forecast and excludes fees, slippage and execution constraints.",
         "Risk controls: high-volatility regime suppresses conviction; neutral signals do not force a trade. Levels are research references, not execution instructions.",
-        "Data source: Binance public market data; CoinGecko OHLC fallback where needed · cached 5 min.",
+        "Data source: Binance, Kraken and CoinGecko public market data, with provider fallback · cached 5 min.",
         "<i>Research and educational market analysis only. Not individualized financial advice. No return is guaranteed; verify fees, slippage and liquidity.</i>",
     ])
     return "\n\n".join(lines)
