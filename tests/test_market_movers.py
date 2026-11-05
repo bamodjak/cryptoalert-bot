@@ -176,3 +176,29 @@ def test_market_movers_text_is_localized_and_escapes_provider_names():
 
 def test_market_movers_command_is_registered_on_the_user_router():
     assert any(handler.callback is cmd_movers for handler in user_router.message.handlers)
+
+
+def test_market_movers_falls_back_to_coinpaprika_tickers():
+    async def scenario():
+        redis = FakeRedis({"cg:rate_limited": "1"})
+        service = PriceService(redis, http=None)
+        service._paprika_json = AsyncMock(return_value=[
+            {
+                "id": f"coin-{index}", "name": f"Coin {index}", "symbol": f"C{index}",
+                "rank": index + 1,
+                "quotes": {"USD": {
+                    "price": 1.0 + index, "market_cap": 100_000_000 + index,
+                    "percent_change_24h": float(index - 5),
+                }},
+            }
+            for index in range(12)
+        ])
+        result = await service.market_movers()
+        assert result["source"] == "coinpaprika"
+        assert len(result["gainers"]) == 5
+        assert len(result["losers"]) == 5
+        assert result["gainers"][0]["symbol"] == "C11"
+        assert result["losers"][0]["symbol"] == "C0"
+        assert "cg:movers" in redis.values
+        service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD", "limit": 100})
+    asyncio.run(scenario())

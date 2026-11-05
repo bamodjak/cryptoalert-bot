@@ -195,10 +195,25 @@ class PriceService:
         return out
 
 
+    async def _paprika_json(self, path: str, params: dict | None = None):
+        """Fetch public fallback market data from CoinPaprika (no API key required)."""
+        if self.http is None:
+            return None
+        try:
+            async with self.http.get(
+                "https://api.coinpaprika.com/v1" + path,
+                params=params or {},
+                headers={"accept": "application/json"},
+            ) as response:
+                response.raise_for_status()
+                return await response.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError) as exc:
+            log.warning("CoinPaprika market fallback failed path=%s error=%s", path, type(exc).__name__)
+            return None
+
     async def market_overview(self) -> dict:
-        """Return cached global market metrics, with a bounded stale-data fallback."""
-        cache_key = "cg:global"
-        stale_key = "cg:global:stale"
+        """Return global metrics from CoinGecko, falling back to CoinPaprika and bounded stale data."""
+        cache_key, stale_key = "cg:global", "cg:global:stale"
         cached = await self.redis.get(cache_key)
         if cached is not None:
             try:
@@ -206,14 +221,15 @@ class PriceService:
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached global market data")
 
-        stale = await self.redis.get(stale_key)
         stale_payload = None
+        stale = await self.redis.get(stale_key)
         if stale is not None:
             try:
                 stale_payload = json.loads(stale)
             except (TypeError, ValueError):
                 log.warning("discarding malformed stale global market data")
 
+        payload = None
         try:
             if await self.redis.exists("cg:rate_limited"):
                 raise PriceError("CoinGecko is temporarily rate-limited")
@@ -227,124 +243,121 @@ class PriceService:
                 "active_cryptocurrencies": int(data["active_cryptocurrencies"]),
                 "fetched_at": int(data.get("updated_at") or time.time()),
                 "stale": False,
+                "source": "coingecko",
             }
-            if (
-                payload["market_cap_usd"] <= 0
-                or payload["volume_24h_usd"] < 0
-                or payload["btc_dominance"] < 0
-                or payload["active_cryptocurrencies"] < 0
-            ):
-                raise ValueError("invalid global market metrics")
-            encoded = json.dumps(payload, separators=(",", ":"))
-            await self.redis.set(cache_key, encoded, ex=120)
-            await self.redis.set(stale_key, encoded, ex=3600)
-            return payload
         except (PriceError, KeyError, TypeError, ValueError) as exc:
+            log.warning("CoinGecko global market data unavailable; trying CoinPaprika (%s)", type(exc).__name__)
+            data = await self._paprika_json("/global")
+            if isinstance(data, dict):
+                try:
+                    payload = {
+                        "market_cap_usd": float(data.get("market_cap_usd", data.get("market_cap"))),
+                        "volume_24h_usd": float(data.get("volume_24h_usd", data.get("volume_24h"))),
+                        "market_cap_change_24h": float(data.get("market_cap_change_24h", data.get("market_cap_change_24h_percentage", 0))),
+                        "btc_dominance": float(data.get("bitcoin_dominance_percentage", data.get("btc_dominance_percentage", data.get("bitcoin_dominance", 0)))),
+                        "active_cryptocurrencies": int(data.get("cryptocurrencies_number", data.get("active_cryptocurrencies", 0))),
+                        "fetched_at": int(data.get("last_updated", time.time())),
+                        "stale": False,
+                        "source": "coinpaprika",
+                    }
+                    if payload["market_cap_usd"] <= 0 or payload["volume_24h_usd"] < 0:
+                        raise ValueError("invalid CoinPaprika global metrics")
+                except (TypeError, ValueError):
+                    payload = None
+
+        if payload is None:
             if stale_payload is not None:
                 stale_payload["stale"] = True
                 return stale_payload
-            if isinstance(exc, PriceError):
-                raise
-            raise PriceError("Global market data is unavailable") from exc
+            raise PriceError("Global market data is unavailable")
 
+        encoded = json.dumps(payload, separators=(",", ":"))
+        await self.redis.set(cache_key, encoded, ex=120 if payload["source"] == "coingecko" else 300)
+        await self.redis.set(stale_key, encoded, ex=3600)
+        return payload
 
     async def market_movers(self) -> dict:
-        """Return the strongest 24h movers among the 100 largest assets by market cap."""
-        cache_key = "cg:movers"
-        stale_key = "cg:movers:stale"
+        """Return 24h movers from the top 100 assets, with independent provider fallback."""
+        cache_key, stale_key = "cg:movers", "cg:movers:stale"
         cached = await self.redis.get(cache_key)
         if cached is not None:
             try:
                 payload = json.loads(cached)
-                if (
-                    isinstance(payload, dict)
-                    and isinstance(payload.get("gainers"), list)
-                    and isinstance(payload.get("losers"), list)
-                    and isinstance(payload.get("fetched_at"), int)
-                ):
+                if isinstance(payload, dict) and isinstance(payload.get("gainers"), list) and isinstance(payload.get("losers"), list) and isinstance(payload.get("fetched_at"), int):
                     return payload
                 raise ValueError("invalid cached market movers structure")
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached market movers")
 
-        stale = await self.redis.get(stale_key)
         stale_payload = None
+        stale = await self.redis.get(stale_key)
         if stale is not None:
             try:
                 candidate = json.loads(stale)
-                if (
-                    isinstance(candidate, dict)
-                    and isinstance(candidate.get("gainers"), list)
-                    and isinstance(candidate.get("losers"), list)
-                    and isinstance(candidate.get("fetched_at"), int)
-                ):
+                if isinstance(candidate, dict) and isinstance(candidate.get("gainers"), list) and isinstance(candidate.get("losers"), list) and isinstance(candidate.get("fetched_at"), int):
                     stale_payload = candidate
                 else:
                     raise ValueError("invalid stale market movers structure")
             except (TypeError, ValueError):
                 log.warning("discarding malformed stale market movers")
 
+        rows = None
+        source = "coingecko"
         try:
             if await self.redis.exists("cg:rate_limited"):
                 raise PriceError("CoinGecko is temporarily rate-limited")
             rows = await self._get(
                 "/coins/markets",
-                {
-                    "vs_currency": "usd",
-                    "order": "market_cap_desc",
-                    "per_page": 100,
-                    "page": 1,
-                    "sparkline": "false",
-                    "price_change_percentage": "24h",
-                },
+                {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 100, "page": 1, "sparkline": "false", "price_change_percentage": "24h"},
             )
-            if not isinstance(rows, list):
-                raise ValueError("invalid market movers response")
-            candidates = []
+        except PriceError as exc:
+            log.warning("CoinGecko movers unavailable; trying CoinPaprika (%s)", type(exc).__name__)
+            source = "coinpaprika"
+            rows = await self._paprika_json("/tickers", {"quotes": "USD", "limit": 100})
+
+        candidates = []
+        if isinstance(rows, list):
             for row in rows:
                 try:
-                    change = float(row["price_change_percentage_24h"])
-                    price = float(row["current_price"])
-                    market_cap = float(row["market_cap"])
+                    if source == "coinpaprika":
+                        quote = row.get("quotes", {}).get("USD", {})
+                        change = float(quote["percent_change_24h"])
+                        price = float(quote["price"])
+                        market_cap = float(quote["market_cap"])
+                        rank = int(row.get("rank") or 0)
+                    else:
+                        change = float(row["price_change_percentage_24h"])
+                        price = float(row["current_price"])
+                        market_cap = float(row["market_cap"])
+                        rank = len(candidates) + 1
                     symbol = str(row["symbol"]).strip().upper()
                     name = str(row["name"]).strip()
-                    if (
-                        not symbol or not name
-                        or not all(math.isfinite(value) for value in (price, market_cap, change))
-                        or price <= 0 or market_cap < 10_000_000
-                        or not (-100 <= change <= 10000)
-                    ):
+                    if not symbol or not name or not all(math.isfinite(v) for v in (price, market_cap, change)) or price <= 0 or market_cap < 10_000_000 or not (-100 <= change <= 10000):
                         continue
-                    candidates.append({
-                        "id": str(row["id"]),
-                        "symbol": symbol[:12],
-                        "name": name[:48],
-                        "price_usd": price,
-                        "change_24h": change,
-                        "market_cap_usd": market_cap,
-                    })
+                    if source == "coinpaprika" and rank > 100:
+                        continue
+                    candidates.append({"id": str(row.get("id", "")), "symbol": symbol[:12], "name": name[:48], "price_usd": price, "change_24h": change, "market_cap_usd": market_cap})
                 except (KeyError, TypeError, ValueError):
                     continue
-            if len(candidates) < 5:
-                raise ValueError("insufficient valid market data")
-            payload = {
-                "gainers": sorted(candidates, key=lambda item: item["change_24h"], reverse=True)[:5],
-                "losers": sorted(candidates, key=lambda item: item["change_24h"])[:5],
-                "fetched_at": int(time.time()),
-                "stale": False,
-                "universe": "top_100_by_market_cap",
-            }
-            encoded = json.dumps(payload, separators=(",", ":"))
-            await self.redis.set(cache_key, encoded, ex=180)
-            await self.redis.set(stale_key, encoded, ex=1800)
-            return payload
-        except (PriceError, KeyError, TypeError, ValueError) as exc:
+
+        if len(candidates) < 5:
             if stale_payload is not None:
                 stale_payload["stale"] = True
                 return stale_payload
-            if isinstance(exc, PriceError):
-                raise
-            raise PriceError("Market movers are temporarily unavailable") from exc
+            raise PriceError("Market movers are temporarily unavailable")
+
+        payload = {
+            "gainers": sorted(candidates, key=lambda item: item["change_24h"], reverse=True)[:5],
+            "losers": sorted(candidates, key=lambda item: item["change_24h"])[:5],
+            "fetched_at": int(time.time()),
+            "stale": False,
+            "source": source,
+            "universe": "top_100_by_market_cap",
+        }
+        encoded = json.dumps(payload, separators=(",", ":"))
+        await self.redis.set(cache_key, encoded, ex=180 if source == "coingecko" else 300)
+        await self.redis.set(stale_key, encoded, ex=1800)
+        return payload
 
     async def gas_gwei(self) -> float:
         cached = await self.redis.get("gas:gwei")

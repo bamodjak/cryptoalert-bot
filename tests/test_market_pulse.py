@@ -151,3 +151,25 @@ def test_market_snapshot_is_localized_and_marks_stale_data():
 
 def test_market_command_is_registered_on_the_user_router():
     assert any(handler.callback is cmd_market for handler in user_router.message.handlers)
+
+
+def test_market_overview_falls_back_to_coinpaprika_when_coingecko_is_rate_limited():
+    async def scenario():
+        redis = FakeRedis({"cg:rate_limited": "1"})
+        service = PriceService(redis, http=None)
+        service._paprika_json = AsyncMock(return_value={
+            "market_cap_usd": 2_800_000_000_000,
+            "volume_24h_usd": 120_000_000_000,
+            "market_cap_change_24h": 2.4,
+            "bitcoin_dominance_percentage": 57.2,
+            "cryptocurrencies_number": 12_000,
+            "last_updated": 1_793_858_724,
+        })
+        result = await service.market_overview()
+        assert result["source"] == "coinpaprika"
+        assert result["market_cap_usd"] == 2_800_000_000_000
+        assert result["btc_dominance"] == 57.2
+        assert result["active_cryptocurrencies"] == 12_000
+        assert "cg:global" in redis.values
+        service._paprika_json.assert_awaited_once_with("/global")
+    asyncio.run(scenario())
