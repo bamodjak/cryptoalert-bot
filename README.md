@@ -10,7 +10,8 @@
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
 - Referral links and join counts, payment support, service terms and concise notification copy
 - Price feed uses CoinGecko with CoinPaprika fallback for supported assets; provider quotes are cached in Redis
-- `/prices` displays the top 33 assets by market capitalization with individual selection or a complete price list, 24-hour change, provider fallback and stale-data protection\n- `/market` shows total crypto market capitalization, 24-hour trading volume and market-cap change, BTC dominance, and active asset count; results are cached briefly with a bounded stale-data fallback
+- `/prices` displays the top 33 assets by market capitalization with individual selection or a complete price list, 24-hour change, provider fallback and stale-data protection
+- `/market` shows total crypto market capitalization, 24-hour trading volume and market-cap change, BTC dominance, and active asset count; results are cached briefly with a bounded stale-data fallback
 - `/movers` shows the top five 24-hour gainers and losers among the 100 largest assets by market cap, with a $10M minimum market cap, cached data and a stale-data fallback
 - `/watchlist` tracks up to 10 supported assets per Telegram account, shows cached USD quotes, and supports guided add/remove actions
 - Premium `/signals` quantitative research desk ranks BTC, ETH, SOL, BNB, XRP, DOGE, LINK and AVAX using 4h exchange OHLCV history, multi-horizon momentum, EMA trend, RSI, ATR, volume confirmation and volatility-regime controls; cached for five minutes
