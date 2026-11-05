@@ -1,4 +1,4 @@
-aiogram>=3.13,<4
+aiogram>=3.25,<4
 aiohttp>=3.9
 sqlalchemy[asyncio]>=2.0.30,<2.1
 asyncpg>=0.29
