@@ -31,6 +31,7 @@ from .i18n import tr, welcome_text
 from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
 from .prices import PriceError, PriceService
 from .users import get_user
+from .asset_detail import asset_detail_keyboard, asset_detail_text
 from .advisor import AdvisorUnavailable, build_advisory, format_advisory
 
 class AlertCustomInput(StatesGroup):
@@ -361,11 +362,8 @@ async def cb_crypto_prices(cb: CallbackQuery, session: AsyncSession, prices: Pri
             coin = next((item for item in payload["coins"] if item["rank"] == rank), None)
             if coin is None:
                 raise PriceError("Selected market rank is no longer available")
-            text = crypto_prices_text(payload, u.language, selected=coin)
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=tr(u.language, "prices_all"), callback_data="prices:all")],
-                [InlineKeyboardButton(text=tr(u.language, "prices_back_to_list"), callback_data="prices:open")],
-            ])
+            text = asset_detail_text(coin, u.language, payload)
+            keyboard = asset_detail_keyboard(coin["symbol"], u.language, "prices:open")
         else:
             text = crypto_prices_text(payload, u.language)
             keyboard = crypto_prices_keyboard(payload["coins"], u.language)
