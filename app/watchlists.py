@@ -102,9 +102,8 @@ async def cb_watchlist_add_asset(callback: CallbackQuery, session: AsyncSession,
     if coin is None:
         await callback.answer("Asset could not be resolved. Try again later.", show_alert=True)
         return
-    count = await session.scalar(
-        select(Watchlist.id).where(Watchlist.user_id == user.id).limit(MAX_WATCHLIST_ITEMS)
-    )
+    # Serialize concurrent additions for this account before enforcing its cap.
+    await session.scalar(select(User).where(User.id == user.id).with_for_update())
     rows = list((await session.scalars(select(Watchlist).where(Watchlist.user_id == user.id))).all())
     if any(row.coin_id == coin.id for row in rows):
         await callback.answer(f"{symbol.upper()} is already in your watchlist.", show_alert=True)
