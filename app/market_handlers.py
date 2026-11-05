@@ -1,5 +1,6 @@
 """Telegram handlers for market data, movers and quantitative research."""
 import html
+import logging
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -20,6 +21,7 @@ from .parsing import fmt_usd
 from .prices import PriceError, PriceService
 from .users import get_user
 
+log = logging.getLogger(__name__)
 market_router = Router(name="market")
 
 @market_router.message(Command("price"))
@@ -96,7 +98,8 @@ async def cmd_market(m: Message, session: AsyncSession, prices: PriceService):
     u = await get_user(session, m.from_user)
     try:
         text = await _market_snapshot(prices, u.language)
-    except PriceError:
+    except PriceError as exc:
+        log.warning("Market pulse unavailable: %s", exc)
         text = tr(u.language, "market_snapshot_unavailable")
     await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
 
@@ -121,7 +124,8 @@ async def cmd_movers(m: Message, session: AsyncSession, prices: PriceService):
         snapshot = await prices.market_movers()
         text = market_movers_text(snapshot, u.language)
         keyboard = market_movers_keyboard(snapshot, u.language)
-    except PriceError:
+    except PriceError as exc:
+        log.warning("Market movers unavailable: %s", exc)
         text = tr(u.language, "market_movers_unavailable")
         keyboard = nav_keyboard(u.id, lang=u.language)
     await m.answer(text, reply_markup=keyboard)
@@ -176,7 +180,8 @@ async def cmd_signals(m: Message, session: AsyncSession, prices: PriceService, r
     try:
         rows = await build_advisory(prices.http, redis)
         text = format_advisory(rows, u.language)
-    except AdvisorUnavailable:
+    except AdvisorUnavailable as exc:
+        log.warning("Premium advisor unavailable: %s", exc)
         text = tr(u.language, "advisor_unavailable")
     await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
 
