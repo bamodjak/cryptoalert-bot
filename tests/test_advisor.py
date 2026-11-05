@@ -31,7 +31,7 @@ def test_advisor_uses_history_and_returns_bounded_risk_levels():
 
 
 def test_advisor_report_discloses_heuristic_and_risk():
-    row = _analyse_klines("ETH", _candles(1.001))
+    row = _analyse_klines("ETH", _candles(1.003))
     report = format_advisory([row])
     assert "PREMIUM QUANT DESK" in report
     assert "NOT probabilities" in report
