@@ -43,3 +43,12 @@ def test_user_lifecycle_service_does_not_depend_on_telegram_transport():
 def test_market_feature_router_does_not_import_general_handlers():
     modules = imported_modules("market_handlers.py")
     assert not any(name in {"handlers", "app.handlers"} or name.endswith(".handlers") for name in modules)
+
+
+def test_alert_feature_router_is_independent_and_registered():
+    from app.alert_handlers import alert_router
+    from app.handlers import router as root_router
+    modules = imported_modules("alert_handlers.py")
+    assert not any(name in {"handlers", "app.handlers"} or name.endswith(".handlers") for name in modules)
+    assert alert_router in root_router.sub_routers
+    assert any(handler.callback.__name__ == "cmd_alerts" for handler in alert_router.message.handlers)
