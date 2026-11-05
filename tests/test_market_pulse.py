@@ -175,3 +175,64 @@ def test_market_overview_falls_back_to_coinpaprika_when_coingecko_is_rate_limite
         assert "cg:global" in redis.values
         service._paprika_json.assert_awaited_once_with("/global")
     asyncio.run(scenario())
+
+
+
+def test_market_movers_coinpaprika_fallback_uses_supported_query_and_normalizes_rows():
+    async def scenario():
+        rows = []
+        for rank in range(1, 11):
+            rows.append({
+                "id": f"coin-{rank}",
+                "rank": rank,
+                "symbol": f"C{rank}",
+                "name": f"Coin {rank}",
+                "quotes": {"USD": {
+                    "price": 10.0 + rank,
+                    "market_cap": 50_000_000 + rank,
+                    "percent_change_24h": 12.0 - rank * 2,
+                }},
+            })
+        redis = FakeRedis({"cg:rate_limited": "1"})
+        service = PriceService(redis, http=None)
+        service._paprika_json = AsyncMock(return_value=rows)
+
+        result = await service.market_movers()
+
+        assert result["source"] == "coinpaprika"
+        assert len(result["gainers"]) == 5
+        assert len(result["losers"]) == 5
+        service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD"})
+
+    asyncio.run(scenario())
+
+
+def test_market_movers_rejects_empty_cached_payload_and_refetches():
+    async def scenario():
+        empty_cache = {
+            "gainers": [], "losers": [], "fetched_at": int(time.time()),
+        }
+        rows = []
+        for rank in range(1, 11):
+            rows.append({
+                "id": f"coin-{rank}", "rank": rank,
+                "symbol": f"C{rank}", "name": f"Coin {rank}",
+                "quotes": {"USD": {
+                    "price": 10.0 + rank, "market_cap": 50_000_000,
+                    "percent_change_24h": 12.0 - rank * 2,
+                }},
+            })
+        redis = FakeRedis({
+            "cg:movers": json.dumps(empty_cache),
+            "cg:rate_limited": "1",
+        })
+        service = PriceService(redis, http=None)
+        service._paprika_json = AsyncMock(return_value=rows)
+
+        result = await service.market_movers()
+
+        assert len(result["gainers"]) == 5
+        assert len(result["losers"]) == 5
+        service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD"})
+
+    asyncio.run(scenario())
