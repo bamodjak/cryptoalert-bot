@@ -32,7 +32,7 @@ def test_market_views_are_provider_and_transport_neutral():
 
 
 def test_feature_routers_do_not_import_each_other_for_shared_helpers():
-    assert "app.handlers" not in imported_modules("watchlists.py")
+    assert not any(name in {"handlers", "app.handlers"} or name.endswith(".handlers") for name in imported_modules("watchlists.py"))
 
 
 def test_user_lifecycle_service_does_not_depend_on_telegram_transport():
