@@ -384,11 +384,15 @@ class PriceService:
                         rank = int(row.get("rank") or 0)
                         price = float(quote["price"])
                         change = float(quote.get("percent_change_24h") or 0)
+                        market_cap = float(quote.get("market_cap") or 0)
+                        volume_24h = float(quote.get("volume_24h") or 0)
                         coin_id = str(row["id"])
                     else:
                         rank = int(row.get("market_cap_rank") or (len(coins) + 1))
                         price = float(row["current_price"])
                         change = float(row.get("price_change_percentage_24h") or 0)
+                        market_cap = float(row.get("market_cap") or 0)
+                        volume_24h = float(row.get("total_volume") or 0)
                         coin_id = str(row["id"])
                     symbol = str(row["symbol"]).strip().upper()
                     name = str(row["name"]).strip()
@@ -399,6 +403,8 @@ class PriceService:
                     coins.append({
                         "rank": rank, "id": coin_id, "symbol": symbol[:12],
                         "name": name[:48], "price_usd": price, "change_24h": change,
+                        "market_cap_usd": market_cap if market_cap > 0 else None,
+                        "volume_24h_usd": volume_24h if volume_24h > 0 else None,
                     })
                 except (KeyError, TypeError, ValueError):
                     continue
