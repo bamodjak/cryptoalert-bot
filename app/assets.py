@@ -25,7 +25,7 @@ CORE_ASSETS: tuple[Asset, ...] = (
     Asset("ripple", "xrp", "XRP", "xrp-xrp", "xrpusdt", True),
     Asset("cardano", "ada", "Cardano", "ada-cardano", "adausdt"),
     Asset("dogecoin", "doge", "Dogecoin", "doge-dogecoin", "dogeusdt", True),
-    Asset("the-open-network", "ton", "Toncoin", "ton-toncoin", "tonusdt"),
+    Asset("the-open-network", "ton", "Toncoin", "toncoin-the-open-network", "tonusdt"),
     Asset("tron", "trx", "TRON", "trx-tron", "trxusdt"),
     Asset("avalanche-2", "avax", "Avalanche", "avax-avalanche", "avaxusdt", True),
     Asset("polkadot", "dot", "Polkadot", "dot-polkadot", "dotusdt"),

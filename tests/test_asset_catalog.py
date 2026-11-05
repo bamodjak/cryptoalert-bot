@@ -34,3 +34,6 @@ def test_asset_lookup_accepts_symbol_and_canonical_id():
     assert get_asset('BTC') == get_asset('bitcoin')
     assert get_asset('$eth').coin_id == 'ethereum'
     assert get_asset('not-a-supported-asset') is None
+
+def test_toncoin_uses_current_coinpaprika_ticker_id():
+    assert PAPRIKA_IDS["the-open-network"] == "toncoin-the-open-network"
