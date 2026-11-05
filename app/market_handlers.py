@@ -112,7 +112,8 @@ async def cb_market(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
         return
     try:
         text = await _market_snapshot(prices, u.language)
-    except PriceError:
+    except PriceError as exc:
+        log.warning("Market pulse callback unavailable: %s", exc)
         text = tr(u.language, "market_snapshot_unavailable")
     await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
 
@@ -141,7 +142,8 @@ async def cb_movers(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
         snapshot = await prices.market_movers()
         text = market_movers_text(snapshot, u.language)
         keyboard = market_movers_keyboard(snapshot, u.language)
-    except PriceError:
+    except PriceError as exc:
+        log.warning("Market movers callback unavailable: %s", exc)
         text = tr(u.language, "market_movers_unavailable")
         keyboard = nav_keyboard(u.id, lang=u.language)
     await edit_message_if_changed(cb.message, text, keyboard)
@@ -197,6 +199,7 @@ async def cb_advisor(cb: CallbackQuery, session: AsyncSession, prices: PriceServ
     try:
         rows = await build_advisory(prices.http, redis)
         text = format_advisory(rows, u.language)
-    except AdvisorUnavailable:
+    except AdvisorUnavailable as exc:
+        log.warning("Premium advisor callback unavailable: %s", exc)
         text = tr(u.language, "advisor_unavailable")
     await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
