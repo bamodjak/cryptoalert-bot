@@ -12,3 +12,11 @@ LIVE_TRADES_RECEIVED = Counter("live_trades_received_total", "Valid live trade u
 LIVE_DASHBOARD_EDITS = Counter("live_dashboard_edits_total", "Successful live Telegram dashboard edits")
 LIVE_DASHBOARD_EDIT_ERRORS = Counter("live_dashboard_edit_errors_total", "Failed live Telegram dashboard edits")
 LIVE_RUNTIME_LEASE_LOSSES = Counter("live_runtime_lease_losses_total", "Lost live runtime lease events")
+
+
+def live_status() -> dict[str, bool]:
+    """Small public status snapshot for health probes; detailed metrics stay on /metrics."""
+    return {
+        "live_runtime_active": bool(LIVE_RUNTIME_ACTIVE._value.get()),
+        "live_stream_connected": bool(LIVE_STREAM_CONNECTED._value.get()),
+    }
