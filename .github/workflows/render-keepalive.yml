@@ -17,15 +17,10 @@ jobs:
     steps:
       - name: Wake and verify Render health endpoint
         env:
-          SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}
+          SERVICE_URL: https://cryptoalert-bot-i0ev.onrender.com
         run: |
-          if [[ -z "${SERVICE_URL}" ]]; then
-            echo "::error::RENDER_SERVICE_URL repository variable is not configured."
-            exit 1
-          fi
-
           for attempt in {1..8}; do
-            if curl --fail --silent --show-error --max-time 20 "${SERVICE_URL%/}/health"; then
+            if curl --fail --silent --show-error --location --max-time 20 "${SERVICE_URL%/}/health"; then
               echo "Render health endpoint is healthy."
               exit 0
             fi
