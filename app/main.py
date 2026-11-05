@@ -34,6 +34,8 @@ log = logging.getLogger("bot")
 COMMANDS = [
     BotCommand(command="start", description="Home & referral link"),
     BotCommand(command="create", description="Create an alert with buttons"),
+    BotCommand(command="alert", description="Create an alert with text syntax"),
+    BotCommand(command="del", description="Delete an alert by ID"),
     BotCommand(command="price", description="Check a single coin price"),
     BotCommand(command="prices", description="Browse top 33 crypto prices"),
     BotCommand(command="market", description="Global market overview"),
@@ -44,6 +46,8 @@ COMMANDS = [
     BotCommand(command="watchlist", description="Track your favourite assets"),
     BotCommand(command="signals", description="Premium quantitative market research"),
     BotCommand(command="gas", description="Check Ethereum network gas"),
+    BotCommand(command="gasalert", description="Premium Ethereum gas alert"),
+    BotCommand(command="cancel", description="Cancel alert setup"),
     BotCommand(command="premium", description="Unlock more alerts"),
     BotCommand(command="help", description="How Orbsat works"),
     BotCommand(command="language", description="Change language / تغيير اللغة"),
