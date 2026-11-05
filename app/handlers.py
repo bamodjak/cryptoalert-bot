@@ -369,7 +369,7 @@ def crypto_prices_text(payload: dict, language: str, selected: dict | None = Non
             f"{fmt_usd(coin['price_usd'])} · 24h {coin['change_24h']:+.2f}%"
         )
     lines.append(tr(language, "crypto_prices_updated", age=age, source=payload.get("source", "market data")))
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 @router.message(Command("prices"))
