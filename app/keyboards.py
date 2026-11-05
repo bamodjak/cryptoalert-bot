@@ -1,6 +1,6 @@
 """Shared Telegram keyboard builders. Keep presentation separate from handlers."""
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from .config import settings
 from .db import Alert, utcnow
@@ -39,25 +39,6 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
     if show_back:
         rows.append([InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def persistent_menu_keyboard(language: str = "en") -> ReplyKeyboardMarkup:
-    """Localized quick actions that remain pinned below the chat input."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=tr(language, "quick_dashboard"), style="primary"),
-                KeyboardButton(text=tr(language, "quick_markets"), style="primary"),
-            ],
-            [
-                KeyboardButton(text=tr(language, "quick_alerts")),
-                KeyboardButton(text=tr(language, "quick_premium"), style="success"),
-            ],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="Orbsat · Dashboard, markets and alerts" if language != "ar" else "Orbsat · السوق والتنبيهات",
-    )
 
 
 def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
