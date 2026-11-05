@@ -11,38 +11,16 @@ from redis.asyncio import Redis
 
 from . import metrics
 from .config import settings
+from .assets import CORE_ASSETS
 
 log = logging.getLogger(__name__)
 
 
-# CoinPaprika identifiers for coins supported by the bot. This provider is used
-# only when CoinGecko is rate-limited or unavailable.
-PAPRIKA_IDS = {
-    "bitcoin": "btc-bitcoin",
-    "ethereum": "eth-ethereum",
-    "solana": "sol-solana",
-    "binancecoin": "bnb-binance-coin",
-    "ripple": "xrp-xrp",
-    "cardano": "ada-cardano",
-    "dogecoin": "doge-dogecoin",
-    "the-open-network": "ton-toncoin",
-    "tron": "trx-tron",
-    "avalanche-2": "avax-avalanche",
-    "polkadot": "dot-polkadot",
-    "chainlink": "link-chainlink",
-    "litecoin": "ltc-litecoin",
-    "tether": "usdt-tether",
-    "usd-coin": "usdc-usd-coin",
-}
-
+# Compatibility mappings derived from the canonical asset registry.
+PAPRIKA_IDS = {asset.coin_id: asset.paprika_id for asset in CORE_ASSETS}
 KNOWN = {
-    "btc": ("bitcoin", "Bitcoin"), "eth": ("ethereum", "Ethereum"), "sol": ("solana", "Solana"),
-    "bnb": ("binancecoin", "BNB"), "xrp": ("ripple", "XRP"), "ada": ("cardano", "Cardano"),
-    "doge": ("dogecoin", "Dogecoin"), "ton": ("the-open-network", "Toncoin"), "trx": ("tron", "TRON"),
-    "avax": ("avalanche-2", "Avalanche"), "dot": ("polkadot", "Polkadot"), "link": ("chainlink", "Chainlink"),
-    "ltc": ("litecoin", "Litecoin"), "usdt": ("tether", "Tether"), "usdc": ("usd-coin", "USDC"),
+    asset.symbol: (asset.coin_id, asset.name) for asset in CORE_ASSETS
 }
-
 
 class PriceError(Exception):
     pass
