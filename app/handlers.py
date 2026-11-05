@@ -2,6 +2,7 @@ import html
 import time
 from datetime import timedelta
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -638,15 +639,20 @@ async def cmd_alerts(m: Message, session: AsyncSession):
     )
 
 
-def alert_history_text(rows: list[Alert], language: str) -> str:
+def alert_history_text(rows: list[Alert], language: str, timezone_name: str = "UTC") -> str:
     if not rows:
         return tr(language, "alert_history_empty")
     lines = [tr(language, "alert_history_title")]
+    try:
+        display_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        display_timezone = ZoneInfo("UTC")
+        timezone_name = "UTC"
     for alert in rows:
         relation = tr(language, "above" if alert.op == ">" else "below")
         target = f"{alert.target:g} gwei" if alert.kind == "gas" else fmt_usd(alert.target)
-        date = alert.triggered_at.strftime("%Y-%m-%d %H:%M") if alert.triggered_at else "—"
-        lines.append(tr(language, "alert_history_row", id=alert.id, symbol=alert.symbol, relation=relation, target=target, date=date))
+        date = alert.triggered_at.astimezone(display_timezone).strftime("%Y-%m-%d %H:%M") if alert.triggered_at else "—"
+        lines.append(tr(language, "alert_history_row", id=alert.id, symbol=alert.symbol, relation=relation, target=target, date=date, timezone=timezone_name))
     return "\n".join(lines)
 
 
@@ -657,7 +663,7 @@ async def cmd_alert_history(message: Message, session: AsyncSession):
         select(Alert).where(Alert.user_id == user.id, Alert.triggered_at.is_not(None))
         .order_by(Alert.triggered_at.desc()).limit(20)
     )).all()
-    await message.answer(alert_history_text(rows, user.language), reply_markup=nav_keyboard(user.id, lang=user.language))
+    await message.answer(alert_history_text(rows, user.language, user.timezone), reply_markup=nav_keyboard(user.id, lang=user.language))
 
 
 @router.callback_query(F.data == "alerts:history")
@@ -668,7 +674,7 @@ async def cb_alert_history(callback: CallbackQuery, session: AsyncSession):
         .order_by(Alert.triggered_at.desc()).limit(20)
     )).all()
     if callback.message:
-        await edit_message_if_changed(callback.message, alert_history_text(rows, user.language), nav_keyboard(user.id, lang=user.language))
+        await edit_message_if_changed(callback.message, alert_history_text(rows, user.language, user.timezone), nav_keyboard(user.id, lang=user.language))
     await callback.answer()
 @router.message(Command("del"))
 async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
