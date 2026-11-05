@@ -21,6 +21,7 @@ from . import worker
 from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
+from .watchlists import router as watchlists_router
 from .live_dashboard import live_dashboard_loop, live_market_stream, router as live_dashboard_router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .admin_management import router as admin_management_router
@@ -37,6 +38,7 @@ COMMANDS = [
     BotCommand(command="movers", description="Top 24-hour market movers"),
     BotCommand(command="live", description="Premium live market dashboard"),
     BotCommand(command="alerts", description="View or remove your alerts"),
+    BotCommand(command="watchlist", description="Track your favourite assets"),
     BotCommand(command="gas", description="Check Ethereum network gas"),
     BotCommand(command="premium", description="Unlock more alerts"),
     BotCommand(command="help", description="How Orbsat works"),
@@ -51,7 +53,7 @@ telegram_transport_ready = False
 
 def register_routers(dp: Dispatcher) -> None:
     # Specific admin-tools callbacks must precede the generic admin:* callback handler.
-    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, live_dashboard_router, router)
+    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, live_dashboard_router, watchlists_router, router)
 
 
 def build_web_app(redis: Redis) -> web.Application:

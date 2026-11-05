@@ -42,16 +42,6 @@ admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
 admin.message.filter(F.chat.type == "private")
 admin.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
 
-HELP = (
-    "<b>Welcome to Orbsat Crypto Alerts 👋</b>\n"
-    "Your crypto alerts, made simple. No command syntax to learn — just tap through the options.\n\n"
-    "🔔 <b>Create an alert</b> and choose a coin, direction, and target.\n"
-    "📊 Open Market Pulse, check BTC, manage alerts, invite friends, or compare plans below.\n\n"
-    f"Free: up to {settings.free_alert_limit} active alerts. Premium: {settings.premium_alert_limit} alerts + Ethereum gas alerts for "
-    f"{settings.premium_price_stars} ⭐ / {settings.premium_days} days.\n\n"
-    "<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>"
-)
-
 
 def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> InlineKeyboardMarkup:
     """Compact, task-first navigation. Administrative controls remain owner-only."""
@@ -65,13 +55,14 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
             InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
+        [InlineKeyboardButton(text=tr(lang, "watchlist"), callback_data="wl:open")],
         [
             InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
             InlineKeyboardButton(text=tr(lang, "premium"), callback_data="dash:premium"),
         ],
         [
             InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
-            InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:home"),
+            InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:help"),
         ],
         [InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")],
     ]
@@ -295,7 +286,7 @@ async def cmd_help(m: Message, session: AsyncSession):
     await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
 
 
-@router.callback_query(F.data.in_({"nav:home", "nav:back"}))
+@router.callback_query(F.data.in_({"nav:home", "nav:back", "nav:help"}))
 async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     u = await get_user(session, cb.from_user)
     if cb.message:

@@ -144,6 +144,17 @@ class GiveawayWinner(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Watchlist(Base):
+    __tablename__ = "watchlists"
+    __table_args__ = (UniqueConstraint("user_id", "coin_id", name="uq_watchlist_user_coin"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    coin_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class AdminAudit(Base):
     __tablename__ = "admin_audit"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

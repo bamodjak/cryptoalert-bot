@@ -4,7 +4,7 @@
 
 **User experience**
 - Guided alert setup for 15 assets: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, TON, TRX, AVAX, DOT, LINK, LTC, USDT and USDC
-- One-tap current BTC price, Ethereum gas, global market pulse, alert list and inline alert deletion
+- One-tap current BTC price, Ethereum gas, global market pulse, personal watchlist (up to 10 assets), alert list and inline alert deletion
 - Premium `/live` dashboard in Telegram chat with public trade-stream prices and automatic message updates (no Mini App)
 - Clear onboarding, a persistent color-coded Telegram quick-action keyboard (markets/movers, BTC price/alerts, Premium/help), compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
@@ -12,6 +12,7 @@
 - Price feed uses CoinGecko with CoinPaprika fallback for supported assets; provider quotes are cached in Redis
 - `/market` shows total crypto market capitalization, 24-hour trading volume and market-cap change, BTC dominance, and active asset count; results are cached briefly with a bounded stale-data fallback
 - `/movers` shows the top five 24-hour gainers and losers among the 100 largest assets by market cap, with a $10M minimum market cap, cached data and a stale-data fallback
+- `/watchlist` tracks up to 10 supported assets per Telegram account, shows cached USD quotes, and supports guided add/remove actions
 - Premium live-market ticks are kept in process memory and dashboard edits are coalesced to a 10-second cadence to avoid burning Redis request quota on every exchange trade
 
 **Operations and safety**
@@ -22,7 +23,7 @@
 
 ### Telegram navigation notes
 
-The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); users do not need to type slash commands. Each label is routed to a real handler, while existing slash commands remain available for compatibility. The compact inline dashboard provides the full feature menu, with administrative controls shown only to configured admins. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
+The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); the inline dashboard also includes a personal Watchlist; users do not need to type slash commands. Each label is routed to a real handler, while existing slash commands remain available for compatibility. The compact inline dashboard provides the full feature menu, with administrative controls shown only to configured admins. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
 
 ## Admin tools
 
