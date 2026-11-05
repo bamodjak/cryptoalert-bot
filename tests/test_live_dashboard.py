@@ -90,8 +90,10 @@ def test_live_runtime_elects_one_owner_for_stream_and_dashboard(monkeypatch):
                 break
             await asyncio.sleep(0.001)
         assert len(started) == 2
+        assert live_dashboard.metrics.LIVE_RUNTIME_ACTIVE._value.get() == 1
         stop.set()
         await asyncio.wait_for(task, timeout=1)
         assert redis.lock_instance.acquired is True
         assert redis.lock_instance.released is True
+        assert live_dashboard.metrics.LIVE_RUNTIME_ACTIVE._value.get() == 0
     asyncio.run(run())
