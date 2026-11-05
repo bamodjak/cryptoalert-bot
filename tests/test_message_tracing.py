@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
-from aiogram.methods import AnswerCallbackQuery
+from aiogram.methods import AnswerCallbackQuery, EditMessageText
 from app import handlers, main
-from app.handlers import cmd_start, router as user_router
+from app.handlers import cmd_start, edit_message_if_changed, router as user_router
 from app.i18n import welcome_text
 from app.middlewares import CallbackTraceMiddleware, MessageTraceMiddleware, safe_message_action
 
@@ -144,3 +144,27 @@ def test_message_trace_does_not_log_skip_handler_as_failure(caplog):
     assert "telegram_message received command=/start" in caplog.text
     assert "telegram_message failed" not in caplog.text
     assert "987654321" not in caplog.text
+
+
+
+def test_noop_telegram_message_edit_is_ignored():
+    error = TelegramBadRequest(
+        method=EditMessageText(chat_id=1, message_id=1, text="same"),
+        message="message is not modified",
+    )
+    message = SimpleNamespace(edit_text=AsyncMock(side_effect=error))
+
+    asyncio.run(edit_message_if_changed(message, "same"))
+
+    message.edit_text.assert_awaited_once_with("same", reply_markup=None)
+
+
+def test_real_telegram_message_edit_error_is_reraised():
+    error = TelegramBadRequest(
+        method=EditMessageText(chat_id=1, message_id=1, text="new"),
+        message="message to edit not found",
+    )
+    message = SimpleNamespace(edit_text=AsyncMock(side_effect=error))
+
+    with pytest.raises(TelegramBadRequest, match="message to edit not found"):
+        asyncio.run(edit_message_if_changed(message, "new"))

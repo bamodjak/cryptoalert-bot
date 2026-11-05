@@ -137,3 +137,12 @@ def test_render_heartbeat_retry_budget_fits_eight_minute_job():
     worst_case_seconds = max_attempts * request_timeout + (max_attempts - 1) * retry_delay
 
     assert worst_case_seconds < job_timeout * 60
+
+
+
+def test_docker_healthcheck_uses_render_runtime_port():
+    dockerfile = Path(__file__).parents[1] / "Dockerfile"
+    content = dockerfile.read_text()
+
+    assert "os.getenv('PORT', '8080')" in content
+    assert "127.0.0.1:8080/health" not in content
