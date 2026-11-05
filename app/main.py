@@ -33,6 +33,7 @@ COMMANDS = [
     BotCommand(command="start", description="Home & referral link"),
     BotCommand(command="create", description="Create an alert with buttons"),
     BotCommand(command="price", description="Check a coin price"),
+    BotCommand(command="market", description="Global market overview"),
     BotCommand(command="live", description="Premium live market dashboard"),
     BotCommand(command="alerts", description="View or remove your alerts"),
     BotCommand(command="gas", description="Check Ethereum network gas"),
