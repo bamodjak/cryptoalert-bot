@@ -31,7 +31,10 @@ from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percent
 from .prices import PriceError, PriceService
 from .users import get_user
 from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard, persistent_menu_keyboard
-from .alert_handlers import alert_router, active_count, alert_history_text
+from .alert_handlers import (
+    alert_router, active_count, alert_history_text, claim_create_action,
+    create_coin_keyboard, edit_if_changed,
+)
 from .market_handlers import (
     market_router, cmd_market, cmd_movers, crypto_prices_keyboard, crypto_prices_text,
     market_movers_keyboard, market_movers_text, market_snapshot_text,
