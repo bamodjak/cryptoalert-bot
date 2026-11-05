@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.methods import AnswerCallbackQuery
 from app import handlers, main
 from app.handlers import cmd_start, router as user_router
@@ -121,3 +122,25 @@ def test_expired_callback_gets_a_fresh_menu_hint(caplog):
     assert "telegram_callback expired" in caplog.text
     event.message.answer.assert_awaited_once()
     assert "/start" in event.message.answer.await_args.args[0]
+
+
+def test_message_trace_does_not_log_skip_handler_as_failure(caplog):
+    event = SimpleNamespace(
+        text="/start",
+        chat=SimpleNamespace(type="private"),
+        from_user=SimpleNamespace(id=987654321),
+    )
+
+    async def handler(received_event, data):
+        raise SkipHandler
+
+    async def run():
+        return await MessageTraceMiddleware()(handler, event, {})
+
+    with caplog.at_level(logging.INFO, logger="app.middlewares"):
+        with pytest.raises(SkipHandler):
+            asyncio.run(run())
+
+    assert "telegram_message received command=/start" in caplog.text
+    assert "telegram_message failed" not in caplog.text
+    assert "987654321" not in caplog.text
