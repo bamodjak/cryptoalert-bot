@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.handlers import cmd_market, market_snapshot_text, router as user_router
+from app.market_handlers import market_router
 from app.parsing import fmt_compact_usd
 from app.prices import PriceError, PriceService
 
@@ -149,8 +150,9 @@ def test_market_snapshot_is_localized_and_marks_stale_data():
     assert "بيانات مخزنة" in arabic
 
 
-def test_market_command_is_registered_on_the_user_router():
-    assert any(handler.callback is cmd_market for handler in user_router.message.handlers)
+def test_market_command_is_registered_on_the_market_feature_router():
+    assert market_router in user_router.sub_routers
+    assert any(handler.callback is cmd_market for handler in market_router.message.handlers)
 
 
 def test_market_overview_falls_back_to_coinpaprika_when_coingecko_is_rate_limited():
