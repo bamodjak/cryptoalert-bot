@@ -72,7 +72,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
             if invite.recipient_started_at is None:
                 invite.recipient_started_at = utcnow()
             premium_note = (
-                "\\n\\n🎁 <b>Your invitation is confirmed!</b> "
+                "\n\n🎁 <b>Your invitation is confirmed!</b> "
                 "Your Premium access is attached to this Telegram account."
             )
 
