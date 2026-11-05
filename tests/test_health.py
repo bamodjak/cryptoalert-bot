@@ -29,10 +29,12 @@ def _health_handler(app):
     raise AssertionError("GET /health route was not registered")
 
 
-def _call_health(monkeypatch, redis, last_success, session_factory=FakeSession, transport_ready=True):
+def _call_health(monkeypatch, redis, last_success, session_factory=FakeSession, transport_ready=True, live_runtime=False, live_stream=False):
     monkeypatch.setattr(main, "Session", session_factory)
     monkeypatch.setattr(main.worker, "last_success", last_success)
     monkeypatch.setattr(main, "telegram_transport_ready", transport_ready)
+    main.metrics.LIVE_RUNTIME_ACTIVE.set(1 if live_runtime else 0)
+    main.metrics.LIVE_STREAM_CONNECTED.set(1 if live_stream else 0)
 
     async def call():
         app = main.build_web_app(redis)
@@ -52,7 +54,23 @@ def test_health_is_ok_after_telegram_and_alert_worker_are_ready(monkeypatch):
     response = _call_health(monkeypatch, FakeRedis(), time.time(), transport_ready=True)
 
     assert response.status == 200
-    assert json.loads(response.text) == {"ok": True}
+    assert json.loads(response.text) == {
+        "ok": True,
+        "live_runtime_active": False,
+        "live_stream_connected": False,
+    }
+
+
+def test_health_reports_live_runtime_and_stream_state(monkeypatch):
+    response = _call_health(
+        monkeypatch, FakeRedis(), time.time(), live_runtime=True, live_stream=True,
+    )
+    assert response.status == 200
+    assert json.loads(response.text) == {
+        "ok": True,
+        "live_runtime_active": True,
+        "live_stream_connected": True,
+    }
 
 
 def test_health_fails_while_telegram_transport_is_not_ready(monkeypatch):
