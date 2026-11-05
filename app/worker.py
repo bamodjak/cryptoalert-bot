@@ -57,6 +57,13 @@ def _alert_message(kind: str, symbol: str | None, value: float, target: float, a
     )
 
 
+def notification_category_filters():
+    """Keep configured alert rows dormant while their notification category is disabled."""
+    return (
+        or_(Alert.kind != "price", User.notify_price_alerts.is_(True)),
+        or_(Alert.kind != "gas", User.notify_gas_alerts.is_(True)),
+    )
+
 async def check_once(bot: Bot, prices: PriceService) -> None:
     global last_success
     async with Session() as s:
@@ -68,8 +75,7 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
                 Alert.active.is_(True),
                 User.suspended.is_(False),
                 or_(Alert.snoozed_until.is_(None), Alert.snoozed_until <= now),
-                or_(Alert.kind != "price", User.notify_price_alerts.is_(True)),
-                or_(Alert.kind != "gas", User.notify_gas_alerts.is_(True)),
+                *notification_category_filters(),
             )
             .order_by(Alert.user_id, Alert.created_at, Alert.id)
         )).all()
