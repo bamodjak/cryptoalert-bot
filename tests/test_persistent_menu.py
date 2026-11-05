@@ -32,3 +32,9 @@ def test_inline_navigation_is_compact_and_keeps_admin_private():
 def test_persistent_menu_labels_do_not_expose_command_syntax():
     keyboard = persistent_menu_keyboard()
     assert all(not button.text.startswith("/") for row in keyboard.keyboard for button in row)
+
+
+def test_persistent_menu_is_localized_for_arabic_users():
+    keyboard = persistent_menu_keyboard("ar")
+    labels = [button.text for row in keyboard.keyboard for button in row]
+    assert labels == ["🏠 الرئيسية", "📊 الأسواق", "🔔 التنبيهات", "⭐ بريميوم"]
