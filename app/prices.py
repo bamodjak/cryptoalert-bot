@@ -359,6 +359,85 @@ class PriceService:
         await self.redis.set(stale_key, encoded, ex=1800)
         return payload
 
+
+    async def top_coins(self) -> dict:
+        """Return the current top 33 crypto assets with short-lived and stale caches."""
+        cache_key, stale_key = "cg:top33", "cg:top33:stale"
+        cached = await self.redis.get(cache_key)
+        if cached is not None:
+            try:
+                payload = json.loads(cached)
+                if isinstance(payload, dict) and len(payload.get("coins", [])) == 33:
+                    return payload
+            except (TypeError, ValueError):
+                log.warning("discarding malformed cached top-33 prices")
+
+        stale_payload = None
+        stale = await self.redis.get(stale_key)
+        if stale is not None:
+            try:
+                candidate = json.loads(stale)
+                if isinstance(candidate, dict) and candidate.get("coins"):
+                    stale_payload = candidate
+            except (TypeError, ValueError):
+                log.warning("discarding malformed stale top-33 prices")
+
+        rows = None
+        source = "coingecko"
+        try:
+            if await self.redis.exists("cg:rate_limited"):
+                raise PriceError("CoinGecko is temporarily rate-limited")
+            rows = await self._get(
+                "/coins/markets",
+                {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 33,
+                 "page": 1, "sparkline": "false", "price_change_percentage": "24h"},
+            )
+        except PriceError as exc:
+            log.warning("CoinGecko top-33 prices unavailable; trying CoinPaprika (%s)", type(exc).__name__)
+            source = "coinpaprika"
+            rows = await self._paprika_json("/tickers", {"quotes": "USD", "limit": 50})
+
+        coins = []
+        if isinstance(rows, list):
+            for row in rows:
+                try:
+                    if source == "coinpaprika":
+                        quote = row.get("quotes", {}).get("USD", {})
+                        rank = int(row.get("rank") or 0)
+                        price = float(quote["price"])
+                        change = float(quote.get("percent_change_24h") or 0)
+                        coin_id = str(row["id"])
+                    else:
+                        rank = len(coins) + 1
+                        price = float(row["current_price"])
+                        change = float(row.get("price_change_percentage_24h") or 0)
+                        coin_id = str(row["id"])
+                    symbol = str(row["symbol"]).strip().upper()
+                    name = str(row["name"]).strip()
+                    if source == "coinpaprika" and rank > 33:
+                        continue
+                    if not symbol or not name or not math.isfinite(price) or price <= 0 or not math.isfinite(change):
+                        continue
+                    coins.append({
+                        "rank": rank, "id": coin_id, "symbol": symbol[:12],
+                        "name": name[:48], "price_usd": price, "change_24h": change,
+                    })
+                except (KeyError, TypeError, ValueError):
+                    continue
+        coins.sort(key=lambda item: item["rank"])
+        coins = coins[:33]
+        if len(coins) < 33:
+            if stale_payload is not None:
+                stale_payload["stale"] = True
+                return stale_payload
+            raise PriceError("Top 33 crypto prices are temporarily unavailable")
+
+        payload = {"coins": coins, "fetched_at": int(time.time()), "stale": False, "source": source}
+        encoded = json.dumps(payload, separators=(",", ":"))
+        await self.redis.set(cache_key, encoded, ex=120 if source == "coingecko" else 300)
+        await self.redis.set(stale_key, encoded, ex=1800)
+        return payload
+
     async def gas_gwei(self) -> float:
         cached = await self.redis.get("gas:gwei")
         if cached is not None:
