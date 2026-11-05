@@ -8,12 +8,12 @@ import asyncio
 import json
 import logging
 import math
+import os
 import time
 
 import aiohttp
 
 from .assets import CORE_ASSETS
-from .config import settings
 from redis.asyncio import Redis
 
 log = logging.getLogger(__name__)
@@ -253,8 +253,8 @@ async def _fetch_one(http: aiohttp.ClientSession, symbol: str) -> dict | None:
     if coin_id:
         try:
             headers = {"accept": "application/json"}
-            if settings.coingecko_api_key:
-                headers["x-cg-demo-api-key"] = settings.coingecko_api_key
+            if os.getenv("COINGECKO_API_KEY"):
+                headers["x-cg-demo-api-key"] = os.environ["COINGECKO_API_KEY"]
             async with http.get(
                 f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
                 params={"vs_currency": "usd", "days": "30"},
