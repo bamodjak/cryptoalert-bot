@@ -33,7 +33,8 @@ log = logging.getLogger("bot")
 COMMANDS = [
     BotCommand(command="start", description="Home & referral link"),
     BotCommand(command="create", description="Create an alert with buttons"),
-    BotCommand(command="price", description="Check a coin price"),
+    BotCommand(command="price", description="Check a single coin price"),
+    BotCommand(command="prices", description="Browse top 33 crypto prices"),
     BotCommand(command="market", description="Global market overview"),
     BotCommand(command="movers", description="Top 24-hour market movers"),
     BotCommand(command="live", description="Premium live market dashboard"),
