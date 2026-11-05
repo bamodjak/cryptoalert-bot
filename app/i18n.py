@@ -5,6 +5,13 @@ from .config import settings
 TEXT = {
     "en": {
         "language": "🌐 Language",
+        "settings": "⚙️ Settings",
+        "settings_title": "⚙️ <b>Personal settings</b>\nTimezone: <b>{timezone}</b>\nAdvanced mode: <b>{advanced}</b>\n\nChoose your timezone or toggle the detailed interface.",
+        "settings_advanced_toggle": "Toggle advanced mode",
+        "settings_enabled": "On",
+        "settings_disabled": "Off",
+        "settings_saved": "Settings saved.",
+        "settings_invalid_timezone": "That timezone is not supported.",
         "choose_language": "Choose your language:",
         "language_saved": "✅ Language set to English.",
         "english": "🇬🇧 English",
@@ -176,6 +183,13 @@ TEXT = {
     },
     "ar": {
         "language": "🌐 اللغة",
+        "settings": "⚙️ الإعدادات",
+        "settings_title": "⚙️ <b>الإعدادات الشخصية</b>\nالمنطقة الزمنية: <b>{timezone}</b>\nالوضع المتقدم: <b>{advanced}</b>\n\nاختر منطقتك الزمنية أو فعّل الواجهة التفصيلية.",
+        "settings_advanced_toggle": "تبديل الوضع المتقدم",
+        "settings_enabled": "مفعّل",
+        "settings_disabled": "معطّل",
+        "settings_saved": "تم حفظ الإعدادات.",
+        "settings_invalid_timezone": "هذه المنطقة الزمنية غير مدعومة.",
         "choose_language": "اختر لغتك:",
         "language_saved": "✅ تم تغيير اللغة إلى العربية.",
         "english": "🇬🇧 English",
