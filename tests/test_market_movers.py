@@ -93,8 +93,14 @@ def test_market_movers_selects_top_five_gainers_and_losers_and_caches():
 def test_market_movers_uses_fresh_cache_without_provider_call():
     async def scenario():
         cached = {
-            "gainers": [{"name": "A", "symbol": "A", "price_usd": 1, "change_24h": 2}],
-            "losers": [{"name": "B", "symbol": "B", "price_usd": 2, "change_24h": -2}],
+            "gainers": [
+                {"name": f"A{index}", "symbol": f"A{index}", "price_usd": 1 + index, "change_24h": 2 + index}
+                for index in range(5)
+            ],
+            "losers": [
+                {"name": f"B{index}", "symbol": f"B{index}", "price_usd": 2 + index, "change_24h": -2 - index}
+                for index in range(5)
+            ],
             "fetched_at": int(time.time()),
             "stale": False,
             "universe": "top_100_by_market_cap",
@@ -112,8 +118,14 @@ def test_market_movers_uses_fresh_cache_without_provider_call():
 def test_market_movers_uses_stale_data_when_rate_limited():
     async def scenario():
         stale = {
-            "gainers": [{"name": "A", "symbol": "A", "price_usd": 1, "change_24h": 2}],
-            "losers": [{"name": "B", "symbol": "B", "price_usd": 2, "change_24h": -2}],
+            "gainers": [
+                {"name": f"A{index}", "symbol": f"A{index}", "price_usd": 1 + index, "change_24h": 2 + index}
+                for index in range(5)
+            ],
+            "losers": [
+                {"name": f"B{index}", "symbol": f"B{index}", "price_usd": 2 + index, "change_24h": -2 - index}
+                for index in range(5)
+            ],
             "fetched_at": int(time.time()) - 600,
             "stale": False,
             "universe": "top_100_by_market_cap",
@@ -202,7 +214,7 @@ def test_market_movers_falls_back_to_coinpaprika_tickers():
         assert result["gainers"][0]["symbol"] == "C11"
         assert result["losers"][0]["symbol"] == "C0"
         assert "cg:movers" in redis.values
-        service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD", "limit": 100})
+        service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD"})
     asyncio.run(scenario())
 
 
