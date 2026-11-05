@@ -38,3 +38,15 @@ def test_persistent_menu_is_localized_for_arabic_users():
     keyboard = persistent_menu_keyboard("ar")
     labels = [button.text for row in keyboard.keyboard for button in row]
     assert labels == ["🏠 الرئيسية", "📊 الأسواق", "🔔 التنبيهات", "⭐ بريميوم"]
+
+
+def test_telegram_command_menu_exposes_every_public_command():
+    from app.main import COMMANDS
+
+    commands = {command.command for command in COMMANDS}
+    assert {
+        "start", "create", "alert", "price", "prices", "market", "movers",
+        "live", "alerts", "history", "watchlist", "signals", "gas",
+        "gasalert", "del", "cancel", "premium", "help", "language",
+        "settings", "terms", "paysupport",
+    } <= commands
