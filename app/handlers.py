@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import metrics
 from .config import settings
 from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
-from .entitlements import refundable_unused_duration
+from .entitlements import premium_payment_matches_offer, refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
@@ -424,10 +424,9 @@ async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
 @router.pre_checkout_query()
 async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
     u = await get_user(session, q.from_user)
-    valid_invoice = (
-        q.invoice_payload == f"premium:{settings.premium_days}"
-        and q.currency == "XTR"
-        and q.total_amount == settings.premium_price_stars
+    valid_invoice = premium_payment_matches_offer(
+        q.invoice_payload, q.currency, q.total_amount,
+        settings.premium_days, settings.premium_price_stars,
     )
     if valid_invoice:
         await q.answer(ok=True)
@@ -441,10 +440,9 @@ async def paid(m: Message, session: AsyncSession):
 
     sp = m.successful_payment
     u = await get_user(session, m.from_user)
-    if (
-        sp.invoice_payload != f"premium:{settings.premium_days}"
-        or sp.currency != "XTR"
-        or sp.total_amount != settings.premium_price_stars
+    if not premium_payment_matches_offer(
+        sp.invoice_payload, sp.currency, sp.total_amount,
+        settings.premium_days, settings.premium_price_stars,
     ):
         inserted = await session.scalar(
             pg_insert(Payment)
