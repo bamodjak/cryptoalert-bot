@@ -201,7 +201,7 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
     await cb.answer(tr(u.language, "affiliation_ready"))
 
 
-@router.callback_query(F.data.startswith("dash:"))
+@router.callback_query(F.data.in_({"dash:price", "dash:gas", "dash:alerts", "dash:premium"}))
 async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
     # Acknowledge Telegram callback queries before any database/network work; Telegram expires them quickly.
     try:
