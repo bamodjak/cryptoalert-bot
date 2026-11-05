@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 import aiohttp
@@ -191,6 +192,59 @@ class PriceService:
                 if cid not in out and cid in stale:
                     out[cid] = stale[cid]
         return out
+
+
+    async def market_overview(self) -> dict:
+        """Return cached global market metrics, with a bounded stale-data fallback."""
+        cache_key = "cg:global"
+        stale_key = "cg:global:stale"
+        cached = await self.redis.get(cache_key)
+        if cached is not None:
+            try:
+                return json.loads(cached)
+            except (TypeError, ValueError):
+                log.warning("discarding malformed cached global market data")
+
+        stale = await self.redis.get(stale_key)
+        stale_payload = None
+        if stale is not None:
+            try:
+                stale_payload = json.loads(stale)
+            except (TypeError, ValueError):
+                log.warning("discarding malformed stale global market data")
+
+        try:
+            if await self.redis.exists("cg:rate_limited"):
+                raise PriceError("CoinGecko is temporarily rate-limited")
+            response = await self._get("/global", {})
+            data = response.get("data") or {}
+            payload = {
+                "market_cap_usd": float(data["total_market_cap"]["usd"]),
+                "volume_24h_usd": float(data["total_volume"]["usd"]),
+                "market_cap_change_24h": float(data["market_cap_change_percentage_24h_usd"]),
+                "btc_dominance": float(data["market_cap_percentage"]["btc"]),
+                "active_cryptocurrencies": int(data["active_cryptocurrencies"]),
+                "fetched_at": int(time.time()),
+                "stale": False,
+            }
+            if (
+                payload["market_cap_usd"] <= 0
+                or payload["volume_24h_usd"] < 0
+                or payload["btc_dominance"] < 0
+                or payload["active_cryptocurrencies"] < 0
+            ):
+                raise ValueError("invalid global market metrics")
+            encoded = json.dumps(payload, separators=(",", ":"))
+            await self.redis.set(cache_key, encoded, ex=120)
+            await self.redis.set(stale_key, encoded, ex=3600)
+            return payload
+        except (PriceError, KeyError, TypeError, ValueError) as exc:
+            if stale_payload is not None:
+                stale_payload["stale"] = True
+                return stale_payload
+            if isinstance(exc, PriceError):
+                raise
+            raise PriceError("Global market data is unavailable") from exc
 
     async def gas_gwei(self) -> float:
         cached = await self.redis.get("gas:gwei")
