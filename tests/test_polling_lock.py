@@ -71,11 +71,14 @@ def test_polling_lease_waits_for_previous_deployment_and_releases():
         assert lock.released
 
     original_retry = main.POLLING_LOCK_RETRY_SECONDS
+    original_grace = main.POLLING_STARTUP_GRACE_SECONDS
     main.POLLING_LOCK_RETRY_SECONDS = 0.001
+    main.POLLING_STARTUP_GRACE_SECONDS = 0
     try:
         asyncio.run(scenario())
     finally:
         main.POLLING_LOCK_RETRY_SECONDS = original_retry
+        main.POLLING_STARTUP_GRACE_SECONDS = original_grace
 
 
 def test_lost_polling_lease_stops_dispatcher_immediately():
