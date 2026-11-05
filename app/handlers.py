@@ -77,22 +77,22 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Short, human-readable quick navigation; labels route to real bot actions."""
+def persistent_menu_keyboard(language: str = "en") -> ReplyKeyboardMarkup:
+    """Short, localized quick navigation; labels route to real bot actions."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="🏠 Dashboard", style="primary"),
-                KeyboardButton(text="📊 Markets", style="primary"),
+                KeyboardButton(text=tr(language, "quick_dashboard"), style="primary"),
+                KeyboardButton(text=tr(language, "quick_markets"), style="primary"),
             ],
             [
-                KeyboardButton(text="🔔 Alerts"),
-                KeyboardButton(text="⭐ Premium", style="success"),
+                KeyboardButton(text=tr(language, "quick_alerts")),
+                KeyboardButton(text=tr(language, "quick_premium"), style="success"),
             ],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Orbsat · Dashboard, markets and alerts",
+        input_field_placeholder="Orbsat · Dashboard, markets and alerts" if language != "ar" else "Orbsat · السوق والتنبيهات",
     )
 
 
@@ -158,29 +158,34 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 welcome_text(u.language) + premium_note,
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
-            await m.answer("Quick actions stay pinned below — use them to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+            await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
             return
     await m.answer(
         welcome_text(u.language),
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
-    await m.answer("Quick actions stay pinned below — use them to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+    await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
 
 
-@router.message(F.text.in_({"🏠 Dashboard", "📊 Markets", "🔔 Alerts", "⭐ Premium"}))
+@router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
 async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService):
     """Handle visible quick-action labels without requiring slash-command syntax."""
     u = await get_user(session, m.from_user)
-    action = (m.text or "").strip()
-    if action == "🏠 Dashboard":
+    action_label = (m.text or "").strip()
+    action = {
+        tr(language, key): key
+        for language in ("en", "ar")
+        for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
+    }.get(action_label)
+    if action == "quick_dashboard":
         await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
-    elif action == "📊 Markets":
+    elif action == "quick_markets":
         try:
             text = await _market_snapshot(prices, u.language)
         except PriceError:
             text = tr(u.language, "market_snapshot_unavailable")
         await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
-    elif action == "🔔 Alerts":
+    elif action == "quick_alerts":
         rows = (await session.scalars(
             select(Alert).where(Alert.user_id == u.id, Alert.active.is_(True)).order_by(Alert.id)
         )).all()
@@ -197,7 +202,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
             tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
             reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
         )
-    elif action == "⭐ Premium":
+    elif action == "quick_premium":
         if u.id == settings.owner_id:
             await m.answer(tr(u.language, "premium_owner"))
             return
