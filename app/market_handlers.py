@@ -195,7 +195,7 @@ async def cb_advisor(cb: CallbackQuery, session: AsyncSession, prices: PriceServ
     if not cb.message:
         return
     if not u.is_premium:
-        return await cb.message.edit_text(tr(u.language, "advisor_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await edit_message_if_changed(cb.message, tr(u.language, "advisor_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
     try:
         rows = await build_advisory(prices.http, redis)
         text = format_advisory(rows, u.language)
