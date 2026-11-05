@@ -197,6 +197,8 @@ class PriceService:
 
     async def _paprika_json(self, path: str, params: dict | None = None):
         """Fetch public fallback market data from CoinPaprika (no API key required)."""
+        if self.http is None:
+            return None
         try:
             async with self.http.get(
                 "https://api.coinpaprika.com/v1" + path,
