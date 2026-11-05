@@ -44,6 +44,7 @@ COMMANDS = [
 ]
 
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
+telegram_transport_ready = False
 
 
 def register_routers(dp: Dispatcher) -> None:
@@ -60,6 +61,12 @@ def build_web_app(redis: Redis) -> web.Application:
         except Exception:
             log.exception("health check failed")
             return web.json_response({"ok": False, "error": "dependency check failed"}, status=503, headers=CORS_HEADERS)
+        if not telegram_transport_ready:
+            return web.json_response(
+                {"ok": False, "error": "telegram transport not ready"},
+                status=503,
+                headers=CORS_HEADERS,
+            )
         stale = not worker.last_success or time.time() - worker.last_success > settings.check_interval * 5
         if stale:
             return web.json_response({"ok": False, "error": "alert worker stale"}, status=503, headers=CORS_HEADERS)
@@ -185,13 +192,19 @@ async def run_polling_with_lock(
     log.info("Telegram polling lease acquired")
     renewal_stop = asyncio.Event()
     renewal_task = asyncio.create_task(_renew_polling_lock(lock, dispatcher, renewal_stop))
-    polling_task = asyncio.create_task(
-        dispatcher.start_polling(
-            bot,
-            allowed_updates=dispatcher.resolve_used_update_types(),
-            handle_signals=False,
-        )
-    )
+    async def _start_polling() -> None:
+        global telegram_transport_ready
+        telegram_transport_ready = True
+        try:
+            await dispatcher.start_polling(
+                bot,
+                allowed_updates=dispatcher.resolve_used_update_types(),
+                handle_signals=False,
+            )
+        finally:
+            telegram_transport_ready = False
+
+    polling_task = asyncio.create_task(_start_polling())
     stop_task = asyncio.create_task(stop.wait())
     try:
         done, _ = await asyncio.wait(
@@ -203,6 +216,8 @@ async def run_polling_with_lock(
     finally:
         stop_task.cancel()
         await asyncio.gather(stop_task, return_exceptions=True)
+        global telegram_transport_ready
+        telegram_transport_ready = False
         renewal_stop.set()
         renewal_task.cancel()
         await asyncio.gather(renewal_task, return_exceptions=True)
@@ -287,6 +302,8 @@ async def main() -> None:
                 secret_token=webhook_secret,
                 allowed_updates=dp.resolve_used_update_types(),
             )
+            global telegram_transport_ready
+            telegram_transport_ready = True
             log.info("webhook mode on :%s", settings.port)
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):
@@ -303,6 +320,7 @@ async def main() -> None:
                 loop.add_signal_handler(sig, stop.set)
             await run_polling_with_lock(dp, bot, redis, stop)
     finally:
+        telegram_transport_ready = False
         stop.set()
         for task in (live_stream_task, live_dashboard_task):
             try:
