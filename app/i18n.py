@@ -6,8 +6,12 @@ TEXT = {
     "en": {
         "language": "🌐 Language",
         "settings": "⚙️ Settings",
-        "settings_title": "⚙️ <b>Personal settings</b>\nTimezone: <b>{timezone}</b>\nAdvanced mode: <b>{advanced}</b>\n\nChoose your timezone or toggle the detailed interface.",
+        "settings_title": "⚙️ <b>Personal settings</b>\nTimezone: <b>{timezone}</b>\nAdvanced mode: <b>{advanced}</b>\nPrice alerts: <b>{price_alerts}</b> · Gas alerts: <b>{gas_alerts}</b>\n\nChoose your timezone, notification categories or detailed interface.",
         "settings_advanced_toggle": "Toggle advanced mode",
+        "settings_price_toggle": "Price alerts: {state}",
+        "settings_gas_toggle": "Gas alerts: {state}",
+        "settings_on": "On",
+        "settings_off": "Off",
         "settings_enabled": "On",
         "settings_disabled": "Off",
         "settings_saved": "Settings saved.",
@@ -190,8 +194,12 @@ TEXT = {
     "ar": {
         "language": "🌐 اللغة",
         "settings": "⚙️ الإعدادات",
-        "settings_title": "⚙️ <b>الإعدادات الشخصية</b>\nالمنطقة الزمنية: <b>{timezone}</b>\nالوضع المتقدم: <b>{advanced}</b>\n\nاختر منطقتك الزمنية أو فعّل الواجهة التفصيلية.",
+        "settings_title": "⚙️ <b>الإعدادات الشخصية</b>\nالمنطقة الزمنية: <b>{timezone}</b>\nالوضع المتقدم: <b>{advanced}</b>\nتنبيهات الأسعار: <b>{price_alerts}</b> · تنبيهات الغاز: <b>{gas_alerts}</b>\n\nاختر المنطقة الزمنية أو فئات التنبيه أو الواجهة التفصيلية."
         "settings_advanced_toggle": "تبديل الوضع المتقدم",
+        "settings_price_toggle": "تنبيهات الأسعار: {state}",
+        "settings_gas_toggle": "تنبيهات الغاز: {state}",
+        "settings_on": "مفعّلة",
+        "settings_off": "معطّلة",
         "settings_enabled": "مفعّل",
         "settings_disabled": "معطّل",
         "settings_saved": "تم حفظ الإعدادات.",
