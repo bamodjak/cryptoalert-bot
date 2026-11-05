@@ -44,12 +44,6 @@ def settings_keyboard(user) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _show_settings(target, user):
-    if target.message:
-        await target.message.edit_text(settings_text(user), reply_markup=settings_keyboard(user))
-    else:
-        await target.answer(settings_text(user), reply_markup=settings_keyboard(user))
-
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message, session: AsyncSession):
