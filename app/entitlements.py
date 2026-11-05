@@ -1,4 +1,4 @@
-"""Pure helpers for calculating refundable, unused Premium entitlement time."""
+"""Pure helpers for Premium offer validation and entitlement accounting."""
 from datetime import datetime, timedelta
 
 
@@ -14,3 +14,18 @@ def refundable_unused_duration(
     lower = max(now, entitlement_start)
     upper = min(entitlement_end, current_expiry)
     return max(timedelta(0), upper - lower)
+
+
+def premium_payment_matches_offer(
+    invoice_payload: str,
+    currency: str,
+    total_amount: int,
+    premium_days: int,
+    premium_price_stars: int,
+) -> bool:
+    """Accept only the exact Premium invoice offer configured by the bot."""
+    return (
+        invoice_payload == f"premium:{premium_days}"
+        and currency == "XTR"
+        and total_amount == premium_price_stars
+    )
