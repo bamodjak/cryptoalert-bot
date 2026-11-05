@@ -205,7 +205,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 welcome_text(u.language) + premium_note,
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
-            await m.answer("Use the quick actions below to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+            await m.answer("Quick actions stay pinned below — use them to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
             return
     await m.answer(
         welcome_text(u.language),
