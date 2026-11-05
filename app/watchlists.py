@@ -6,19 +6,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import User, Watchlist
-from .handlers import get_user
+from .assets import CORE_ASSETS
+from .users import get_user
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
 
 router = Router(name="watchlists")
 MAX_WATCHLIST_ITEMS = 10
-SUPPORTED = (
-    ("btc", "Bitcoin"), ("eth", "Ethereum"), ("sol", "Solana"),
-    ("bnb", "BNB"), ("xrp", "XRP"), ("ada", "Cardano"),
-    ("doge", "Dogecoin"), ("ton", "Toncoin"), ("trx", "TRON"),
-    ("avax", "Avalanche"), ("dot", "Polkadot"), ("link", "Chainlink"),
-    ("ltc", "Litecoin"), ("usdt", "Tether"), ("usdc", "USDC"),
-)
+SUPPORTED = tuple((asset.symbol, asset.name) for asset in CORE_ASSETS)
 
 
 def _label(language: str, english: str, arabic: str) -> str:
