@@ -88,3 +88,5 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 - Personal settings persist timezone and advanced presentation mode. Advanced mode adds market capitalization and 24-hour volume when the provider supplies those metrics.
 - Alerts can be snoozed for one hour and resumed. The worker excludes currently snoozed alerts. Triggered alerts remain available through recent history.
 - User timezone is used to render triggered-alert history. The timezone database is installed as a Python dependency so ZoneInfo works in minimal containers.
+
+- The live trade stream and Telegram dashboard updater share one Redis-elected runtime lease. This keeps the in-memory quote cache and message updater on the same instance during overlapping deployments and prevents duplicate stream consumers or dashboard edits.
