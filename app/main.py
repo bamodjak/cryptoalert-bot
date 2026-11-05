@@ -27,6 +27,7 @@ from .admin_tools import public_router as giveaway_public_router, router as admi
 from .admin_management import router as admin_management_router
 from .middlewares import KILL_KEY, CallbackTraceMiddleware, DbSessionMiddleware, KillSwitchMiddleware, MessageTraceMiddleware, ThrottleMiddleware
 from .prices import PriceService
+from .preferences import router as preferences_router
 
 log = logging.getLogger("bot")
 
@@ -46,6 +47,7 @@ COMMANDS = [
     BotCommand(command="premium", description="Unlock more alerts"),
     BotCommand(command="help", description="How Orbsat works"),
     BotCommand(command="language", description="Change language / تغيير اللغة"),
+    BotCommand(command="settings", description="Personal settings and timezone"),
     BotCommand(command="terms", description="Service terms"),
     BotCommand(command="paysupport", description="Payment help"),
 ]
@@ -56,7 +58,7 @@ telegram_transport_ready = False
 
 def register_routers(dp: Dispatcher) -> None:
     # Specific admin-tools callbacks must precede the generic admin:* callback handler.
-    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, live_dashboard_router, watchlists_router, router)
+    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, live_dashboard_router, watchlists_router, preferences_router, router)
 
 
 def build_web_app(redis: Redis) -> web.Application:
