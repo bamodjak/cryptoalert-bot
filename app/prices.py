@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -254,7 +255,15 @@ class PriceService:
         cached = await self.redis.get(cache_key)
         if cached is not None:
             try:
-                return json.loads(cached)
+                payload = json.loads(cached)
+                if (
+                    isinstance(payload, dict)
+                    and isinstance(payload.get("gainers"), list)
+                    and isinstance(payload.get("losers"), list)
+                    and isinstance(payload.get("fetched_at"), int)
+                ):
+                    return payload
+                raise ValueError("invalid cached market movers structure")
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached market movers")
 
@@ -262,7 +271,16 @@ class PriceService:
         stale_payload = None
         if stale is not None:
             try:
-                stale_payload = json.loads(stale)
+                candidate = json.loads(stale)
+                if (
+                    isinstance(candidate, dict)
+                    and isinstance(candidate.get("gainers"), list)
+                    and isinstance(candidate.get("losers"), list)
+                    and isinstance(candidate.get("fetched_at"), int)
+                ):
+                    stale_payload = candidate
+                else:
+                    raise ValueError("invalid stale market movers structure")
             except (TypeError, ValueError):
                 log.warning("discarding malformed stale market movers")
 
@@ -291,7 +309,9 @@ class PriceService:
                     symbol = str(row["symbol"]).strip().upper()
                     name = str(row["name"]).strip()
                     if (
-                        not symbol or not name or price <= 0 or market_cap < 10_000_000
+                        not symbol or not name
+                        or not all(math.isfinite(value) for value in (price, market_cap, change))
+                        or price <= 0 or market_cap < 10_000_000
                         or not (-100 <= change <= 10000)
                     ):
                         continue
