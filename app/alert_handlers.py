@@ -527,4 +527,4 @@ async def cb_delete_alert(cb: CallbackQuery, session: AsyncSession):
     result = await session.execute(delete(Alert).where(Alert.id == alert_id, Alert.user_id == u.id))
     if cb.message:
         message = tr(u.language, "deleted") if result.rowcount else tr(u.language, "already_removed")
-        await cb.message.edit_text(message, reply_markup=nav_keyboard(u.id, lang=u.language))
+        await edit_message_if_changed(cb.message, message, reply_markup=nav_keyboard(u.id, lang=u.language))
