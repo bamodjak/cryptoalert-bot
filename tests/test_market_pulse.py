@@ -262,3 +262,27 @@ def test_market_overview_discards_incomplete_cache_and_uses_provider_fallback():
         service._paprika_json.assert_awaited_once_with("/global")
 
     asyncio.run(scenario())
+
+
+
+def test_coinpaprika_bulk_tickers_are_shared_in_short_lived_cache():
+    async def scenario():
+        rows = [{
+            "id": "btc-bitcoin",
+            "rank": 1,
+            "symbol": "BTC",
+            "name": "Bitcoin",
+            "quotes": {"USD": {"price": 100_000, "market_cap": 1_000_000_000}},
+        }]
+        redis = FakeRedis()
+        service = PriceService(redis, http=None)
+        service._paprika_json = AsyncMock(return_value=rows)
+
+        first = await service._paprika_tickers()
+        second = await service._paprika_tickers()
+
+        assert first == rows
+        assert second == rows
+        service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD"})
+
+    asyncio.run(scenario())
