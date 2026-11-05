@@ -33,6 +33,7 @@ from .users import get_user
 from .asset_detail import asset_detail_keyboard, asset_detail_text
 from .advisor import AdvisorUnavailable, build_advisory, format_advisory
 from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard, persistent_menu_keyboard
+from .market_views import crypto_prices_keyboard, crypto_prices_text, market_movers_keyboard, market_movers_text, market_snapshot_text
 
 class AlertCustomInput(StatesGroup):
     waiting = State()
