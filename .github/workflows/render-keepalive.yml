@@ -1,0 +1,40 @@
+name: Render Keepalive
+
+on:
+  schedule:
+    - cron: "1-59/5 * * * *"
+  workflow_dispatch:
+
+# Keep scheduled pings independent from code-push workflows.
+concurrency:
+  group: render-keepalive-schedule
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Wake and verify Render health endpoint
+        env:
+          SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}
+        run: |
+          if [[ -z "${SERVICE_URL}" ]]; then
+            echo "::error::RENDER_SERVICE_URL repository variable is not configured."
+            exit 1
+          fi
+
+          for attempt in {1..8}; do
+            if curl --fail --silent --show-error --max-time 20 "${SERVICE_URL%/}/health"; then
+              echo "Render health endpoint is healthy."
+              exit 0
+            fi
+
+            echo "Health check attempt ${attempt}/8 failed; retrying in 5 seconds..."
+            if [[ "${attempt}" -lt 8 ]]; then
+              sleep 5
+            fi
+          done
+
+          echo "::error::Render health endpoint did not become healthy after 8 attempts."
+          exit 1
