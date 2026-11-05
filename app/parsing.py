@@ -59,3 +59,12 @@ def fmt_usd(v: float) -> str:
 
 def fmt_gwei(v: float) -> str:
     return f"{v:.2f}" if v >= 1 else f"{v:.4g}"
+
+
+
+def fmt_compact_usd(value: float) -> str:
+    """Format large USD market metrics without losing their scale."""
+    for suffix, scale in (("T", 1e12), ("B", 1e9), ("M", 1e6), ("K", 1e3)):
+        if abs(value) >= scale:
+            return f"${value / scale:,.2f}{suffix}"
+    return f"${value:,.0f}"
