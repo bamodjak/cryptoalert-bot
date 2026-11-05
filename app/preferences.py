@@ -1,5 +1,6 @@
 """User-facing preferences screens and settings actions."""
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,13 @@ from .i18n import tr
 from .users import get_user
 
 router = Router(name="preferences")
+
+async def _edit_settings(message, user):
+    try:
+        await message.edit_text(settings_text(user), reply_markup=settings_keyboard(user))
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 SUPPORTED_TIMEZONES = {
     "UTC": "UTC",
@@ -55,7 +63,7 @@ async def cmd_settings(message: Message, session: AsyncSession):
 async def cb_settings(callback: CallbackQuery, session: AsyncSession):
     user = await get_user(session, callback.from_user)
     if callback.message:
-        await callback.message.edit_text(settings_text(user), reply_markup=settings_keyboard(user))
+        await _edit_settings(callback.message, user)
     await callback.answer()
 
 
