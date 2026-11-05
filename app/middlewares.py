@@ -2,6 +2,7 @@ import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 from redis.asyncio import Redis
@@ -151,6 +152,9 @@ class MessageTraceMiddleware(BaseMiddleware):
         log.info("telegram_message received command=%s chat_type=%s", action, chat_type)
         try:
             result = await handler(event, data)
+        except SkipHandler:
+            # Aiogram uses this as normal router fall-through, not a handler failure.
+            raise
         except Exception:
             log.exception("telegram_message failed command=%s chat_type=%s", action, chat_type)
             if action == "/start":
