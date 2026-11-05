@@ -38,3 +38,8 @@ def test_feature_routers_do_not_import_each_other_for_shared_helpers():
 def test_user_lifecycle_service_does_not_depend_on_telegram_transport():
     modules = imported_modules("users.py")
     assert not any(name == "aiogram" or name.startswith("aiogram.") for name in modules)
+
+
+def test_market_feature_router_does_not_import_general_handlers():
+    modules = imported_modules("market_handlers.py")
+    assert not any(name in {"handlers", "app.handlers"} or name.endswith(".handlers") for name in modules)
