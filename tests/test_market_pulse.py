@@ -236,3 +236,29 @@ def test_market_movers_rejects_empty_cached_payload_and_refetches():
         service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD"})
 
     asyncio.run(scenario())
+
+
+
+def test_market_overview_discards_incomplete_cache_and_uses_provider_fallback():
+    async def scenario():
+        redis = FakeRedis({
+            "cg:global": json.dumps({"market_cap_usd": 1}),
+            "cg:rate_limited": "1",
+        })
+        service = PriceService(redis, http=None)
+        service._paprika_json = AsyncMock(return_value={
+            "market_cap_usd": 2_800_000_000_000,
+            "volume_24h_usd": 120_000_000_000,
+            "market_cap_change_24h": 2.4,
+            "bitcoin_dominance_percentage": 57.2,
+            "cryptocurrencies_number": 12_000,
+            "last_updated": 1_793_858_724,
+        })
+
+        result = await service.market_overview()
+
+        assert result["market_cap_usd"] == 2_800_000_000_000
+        assert result["source"] == "coinpaprika"
+        service._paprika_json.assert_awaited_once_with("/global")
+
+    asyncio.run(scenario())
