@@ -127,3 +127,36 @@ def test_giveaway_winners_are_unique_per_giveaway():
         if getattr(constraint, "name", None) == "uq_giveaway_winner_user"
     ]
     assert len(constraints) == 1
+
+
+def test_premium_offer_validation_accepts_only_exact_invoice_terms():
+    from app.entitlements import premium_payment_matches_offer
+
+    assert premium_payment_matches_offer("premium:30", "XTR", 1500, 30, 1500)
+    assert not premium_payment_matches_offer("premium:7", "XTR", 1500, 30, 1500)
+    assert not premium_payment_matches_offer("premium:30", "USD", 1500, 30, 1500)
+    assert not premium_payment_matches_offer("premium:30", "XTR", 1499, 30, 1500)
+    assert not premium_payment_matches_offer("", "XTR", 1500, 30, 1500)
+
+
+def test_refund_calculation_caps_unused_time_to_remaining_account_expiry():
+    from datetime import datetime, timedelta, timezone
+    from app.entitlements import refundable_unused_duration
+
+    now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    entitlement_end = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    account_expiry = datetime(2026, 1, 25, tzinfo=timezone.utc)
+
+    assert refundable_unused_duration(start, entitlement_end, account_expiry, now) == timedelta(days=5)
+
+
+def test_refund_calculation_is_zero_before_entitlement_starts():
+    from datetime import datetime, timedelta, timezone
+    from app.entitlements import refundable_unused_duration
+
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 3, 1, tzinfo=timezone.utc)
+
+    assert refundable_unused_duration(start, end, end, now) == timedelta(days=28)
