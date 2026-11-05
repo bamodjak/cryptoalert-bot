@@ -30,6 +30,6 @@ def test_advisor_report_discloses_heuristic_and_risk():
     row = _analyse_klines("ETH", _candles(1.001))
     report = format_advisory([row])
     assert "PREMIUM QUANT DESK" in report
-    assert "NOT probabilities" in report or "NOT probabilities" not in report
+    assert "NOT probabilities" in report
     assert "Not individualized financial advice" in report
     assert "volatility" in report
