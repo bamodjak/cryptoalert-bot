@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import settings
 from .db import Alert, utcnow
 from .i18n import tr
-from .keyboards import alerts_keyboard, nav_keyboard
+from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard
 from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
 from .prices import PriceError, PriceService
 from .users import get_user
