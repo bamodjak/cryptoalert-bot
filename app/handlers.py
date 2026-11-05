@@ -100,7 +100,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
     elif action == "quick_markets":
         try:
-            text = await _market_snapshot(prices, u.language)
+            text = market_snapshot_text(await prices.market_overview(), u.language)
         except PriceError:
             text = tr(u.language, "market_snapshot_unavailable")
         await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
