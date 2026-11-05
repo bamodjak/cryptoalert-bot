@@ -111,10 +111,18 @@ async def edit_message_if_changed(
 
 
 def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"🗑 #{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}")]
-        for alert in alerts[:20]
-    ]
+    rows = []
+    now = utcnow()
+    for alert in alerts[:20]:
+        control = (
+            InlineKeyboardButton(text=tr(lang, "alert_resume"), callback_data=f"alertresume:{alert.id}")
+            if alert.snoozed_until and alert.snoozed_until > now
+            else InlineKeyboardButton(text=tr(lang, "alert_snooze_1h"), callback_data=f"alertsnooze:{alert.id}")
+        )
+        rows.append([
+            InlineKeyboardButton(text=f"#{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}"),
+            control,
+        ])
     rows.append([
         InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open"),
         InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home"),
@@ -618,7 +626,8 @@ async def cmd_alerts(m: Message, session: AsyncSession):
         word = tr(u.language, "above" if a.op == ">" else "below")
         val = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
         paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
-        lines.append(f"{paused}#{a.id} {a.symbol} {word} {val}")
+        snoozed = f"⏸ {tr(u.language, 'alert_snoozed')} · " if a.snoozed_until and a.snoozed_until > utcnow() else ""
+        lines.append(f"{paused}{snoozed}#{a.id} {a.symbol} {word} {val}")
     await m.answer(
         tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
         reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
@@ -884,6 +893,52 @@ async def cmd_cancel_alert(m: Message, state: FSMContext, session: AsyncSession)
     await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
+@router.callback_query(F.data.startswith("alertsnooze:"))
+async def cb_snooze_alert(cb: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, cb.from_user)
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await cb.answer(tr(user.language, "invalid_option"), show_alert=True)
+        return
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await cb.answer(tr(user.language, "alert_not_found"), show_alert=True)
+        return
+    alert.snoozed_until = utcnow() + timedelta(hours=1)
+    await session.flush()
+    rows = (await session.scalars(
+        select(Alert).where(Alert.user_id == user.id, Alert.active.is_(True)).order_by(Alert.id)
+    )).all()
+    if cb.message:
+        await cb.message.edit_reply_markup(reply_markup=alerts_keyboard(rows, user.id, lang=user.language))
+    await cb.answer(tr(user.language, "alert_snoozed_toast"))
+
+
+@router.callback_query(F.data.startswith("alertresume:"))
+async def cb_resume_alert(cb: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, cb.from_user)
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await cb.answer(tr(user.language, "invalid_option"), show_alert=True)
+        return
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await cb.answer(tr(user.language, "alert_not_found"), show_alert=True)
+        return
+    alert.snoozed_until = None
+    await session.flush()
+    rows = (await session.scalars(
+        select(Alert).where(Alert.user_id == user.id, Alert.active.is_(True)).order_by(Alert.id)
+    )).all()
+    if cb.message:
+        await cb.message.edit_reply_markup(reply_markup=alerts_keyboard(rows, user.id, lang=user.language))
+    await cb.answer(tr(user.language, "alert_resumed_toast"))
 @router.callback_query(F.data.startswith("alertdel:"))
 async def cb_delete_alert(cb: CallbackQuery, session: AsyncSession):
     await cb.answer()
@@ -935,7 +990,8 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
                 word = "above" if a.op == ">" else "below"
                 value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
                 paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
-                lines.append(f"{paused}#{a.id} {a.symbol} {word} {value}")
+                snoozed = f"⏸ {tr(u.language, 'alert_snoozed')} · " if a.snoozed_until and a.snoozed_until > utcnow() else ""
+                lines.append(f"{paused}{snoozed}#{a.id} {a.symbol} {word} {value}")
             text = "🔔 <b>Your active alerts</b>\n" + "\n".join(lines)
         else:
             text = tr(u.language, "no_alerts")
