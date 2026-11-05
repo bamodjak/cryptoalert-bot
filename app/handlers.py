@@ -380,7 +380,7 @@ async def cb_crypto_prices(cb: CallbackQuery, session: AsyncSession, prices: Pri
             coin = next((item for item in payload["coins"] if item["rank"] == rank), None)
             if coin is None:
                 raise PriceError("Selected market rank is no longer available")
-            text = asset_detail_text(coin, u.language, payload)
+            text = asset_detail_text(coin, u.language, payload, advanced=u.advanced_mode)
             keyboard = asset_detail_keyboard(coin["symbol"], u.language, "prices:open")
         else:
             text = crypto_prices_text(payload, u.language)
@@ -523,7 +523,7 @@ async def cb_mover_asset(cb: CallbackQuery, session: AsyncSession, prices: Price
     detail = {**coin, "rank": None}
     await edit_message_if_changed(
         cb.message,
-        asset_detail_text(detail, u.language, snapshot),
+        asset_detail_text(detail, u.language, snapshot, advanced=u.advanced_mode),
         asset_detail_keyboard(coin["symbol"], u.language, "dash:movers"),
     )
     await cb.answer()
