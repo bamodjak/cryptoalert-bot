@@ -197,6 +197,9 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
                             continue
                     elif message.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
                         break
+            metrics.LIVE_STREAM_CONNECTED.set(0)
+            if not stop.is_set():
+                metrics.LIVE_STREAM_RECONNECTS.inc()
         except asyncio.CancelledError:
             metrics.LIVE_STREAM_CONNECTED.set(0)
             raise
