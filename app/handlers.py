@@ -241,7 +241,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
             paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if alert.entitlement_paused else ""
             lines.append(f"{paused}#{alert.id} {alert.symbol} {word} {value}")
         await m.answer(
-            tr(u.language, "active_alerts_header") + "\\n" + "\\n".join(lines) + "\\n\\n" + tr(u.language, "remove_alert_hint"),
+            tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
             reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
         )
     elif action == "⭐ Premium":
@@ -249,7 +249,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
             await m.answer(tr(u.language, "premium_owner"))
             return
         status = (
-            "\\n\\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
+            "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
             if u.is_premium and u.premium_until else ""
         )
         await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
