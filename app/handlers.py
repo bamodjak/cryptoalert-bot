@@ -453,18 +453,26 @@ def market_movers_text(snapshot: dict, language: str) -> str:
     )
 
 
-async def _market_movers_snapshot(prices: PriceService, language: str) -> str:
-    return market_movers_text(await prices.market_movers(), language)
+def market_movers_keyboard(snapshot: dict, language: str) -> InlineKeyboardMarkup:
+    rows = []
+    for item in snapshot["gainers"] + snapshot["losers"]:
+        label = f"{item['symbol'].upper()} {item['change_24h']:+.1f}%"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"asset:mover:{item['id']}")])
+    rows.append([InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.message(Command("movers"))
 async def cmd_movers(m: Message, session: AsyncSession, prices: PriceService):
     u = await get_user(session, m.from_user)
     try:
-        text = await _market_movers_snapshot(prices, u.language)
+        snapshot = await prices.market_movers()
+        text = market_movers_text(snapshot, u.language)
+        keyboard = market_movers_keyboard(snapshot, u.language)
     except PriceError:
         text = tr(u.language, "market_movers_unavailable")
-    await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+        keyboard = nav_keyboard(u.id, lang=u.language)
+    await m.answer(text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "dash:movers")
@@ -474,10 +482,38 @@ async def cb_movers(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
     if not cb.message:
         return
     try:
-        text = await _market_movers_snapshot(prices, u.language)
+        snapshot = await prices.market_movers()
+        text = market_movers_text(snapshot, u.language)
+        keyboard = market_movers_keyboard(snapshot, u.language)
     except PriceError:
         text = tr(u.language, "market_movers_unavailable")
-    await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
+        keyboard = nav_keyboard(u.id, lang=u.language)
+    await edit_message_if_changed(cb.message, text, keyboard)
+
+
+@router.callback_query(F.data.startswith("asset:mover:"))
+async def cb_mover_asset(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, cb.from_user)
+    if not cb.message:
+        await cb.answer()
+        return
+    coin_id = (cb.data or "").rsplit(":", 1)[-1]
+    try:
+        snapshot = await prices.market_movers()
+    except PriceError:
+        await cb.answer(tr(u.language, "market_movers_unavailable"), show_alert=True)
+        return
+    coin = next((item for item in snapshot["gainers"] + snapshot["losers"] if item["id"] == coin_id), None)
+    if coin is None:
+        await cb.answer(tr(u.language, "invalid_option"), show_alert=True)
+        return
+    detail = {**coin, "rank": None}
+    await edit_message_if_changed(
+        cb.message,
+        asset_detail_text(detail, u.language, snapshot),
+        asset_detail_keyboard(coin["symbol"], u.language, "dash:movers"),
+    )
+    await cb.answer()
 
 
 
