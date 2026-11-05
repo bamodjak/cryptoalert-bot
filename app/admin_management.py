@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import AdminAudit, Payment, PremiumGrant, PremiumInvite, User, utcnow
+from .keyboards import edit_message_if_changed
 
 router = Router(name="admin_management")
 router.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
@@ -120,7 +121,7 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
     markup = _kb(rows)
     if isinstance(target, CallbackQuery):
         if target.message:
-            await target.message.edit_text(text, reply_markup=markup)
+            await edit_message_if_changed(target.message, text, reply_markup=markup)
     else:
         await target.answer(text, reply_markup=markup)
 
@@ -433,7 +434,7 @@ async def confirm_grant(cb: CallbackQuery, session: AsyncSession, redis: Redis):
     if payload.get("invalid"):
         result += f"\nIgnored non-numeric lines: {len(payload['invalid'])}."
     if cb.message:
-        await cb.message.edit_text(result, reply_markup=_kb([
+        await edit_message_if_changed(cb.message, result, reply_markup=_kb([
             [InlineKeyboardButton(text="👥 Back to Users", callback_data="admin:users")],
             _back(),
         ]))
@@ -475,7 +476,7 @@ async def cancel_grant(cb: CallbackQuery, redis: Redis):
         return
     await redis.delete(key)
     if cb.message:
-        await cb.message.edit_text("Cancelled. No Premium days were changed.", reply_markup=_kb([
+        await edit_message_if_changed(cb.message, "Cancelled. No Premium days were changed.", reply_markup=_kb([
             [InlineKeyboardButton(text="👥 Back to Users", callback_data="admin:users")], _back()
         ]))
     await cb.answer()
