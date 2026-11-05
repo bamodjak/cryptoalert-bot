@@ -1,4 +1,5 @@
 import html
+import time
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -25,7 +26,7 @@ from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
-from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
+from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
 from .prices import PriceError, PriceService
 
 class AlertCustomInput(StatesGroup):
@@ -57,6 +58,7 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
             InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
+        [InlineKeyboardButton(text=tr(lang, "market"), callback_data="dash:market")],
         [
             InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
             InlineKeyboardButton(text=tr(lang, "premium"), callback_data="dash:premium"),
@@ -278,6 +280,53 @@ async def cmd_price(m: Message, command: CommandObject, session: AsyncSession, p
         f"<b>{coin.symbol.upper()}</b> ({html.escape(coin.name)}): {fmt_usd(px)}",
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
+
+
+
+
+def market_snapshot_text(snapshot: dict, language: str) -> str:
+    age_seconds = max(0, int(time.time()) - int(snapshot["fetched_at"]))
+    age = tr(language, "market_just_now") if age_seconds < 60 else tr(
+        language, "market_minutes_ago", minutes=max(1, age_seconds // 60)
+    )
+    if snapshot.get("stale"):
+        age += " · " + tr(language, "market_cached")
+    return tr(
+        language,
+        "market_snapshot",
+        market_cap=fmt_compact_usd(snapshot["market_cap_usd"]),
+        volume=fmt_compact_usd(snapshot["volume_24h_usd"]),
+        change=f"{snapshot['market_cap_change_24h']:+.2f}%",
+        dominance=f"{snapshot['btc_dominance']:.1f}%",
+        active=f"{snapshot['active_cryptocurrencies']:,}",
+        age=age,
+    )
+
+
+async def _market_snapshot(prices: PriceService, language: str) -> str:
+    return market_snapshot_text(await prices.market_overview(), language)
+
+@router.message(Command("market"))
+async def cmd_market(m: Message, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, m.from_user)
+    try:
+        text = await _market_snapshot(prices, u.language)
+    except PriceError:
+        text = tr(u.language, "market_snapshot_unavailable")
+    await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+
+
+@router.callback_query(F.data == "dash:market")
+async def cb_market(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, cb.from_user)
+    await cb.answer()
+    if not cb.message:
+        return
+    try:
+        text = await _market_snapshot(prices, u.language)
+    except PriceError:
+        text = tr(u.language, "market_snapshot_unavailable")
+    await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
 @router.message(Command("alert"))
