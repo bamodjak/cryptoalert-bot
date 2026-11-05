@@ -194,7 +194,7 @@ TEXT = {
     "ar": {
         "language": "🌐 اللغة",
         "settings": "⚙️ الإعدادات",
-        "settings_title": "⚙️ <b>الإعدادات الشخصية</b>\nالمنطقة الزمنية: <b>{timezone}</b>\nالوضع المتقدم: <b>{advanced}</b>\nتنبيهات الأسعار: <b>{price_alerts}</b> · تنبيهات الغاز: <b>{gas_alerts}</b>\n\nاختر المنطقة الزمنية أو فئات التنبيه أو الواجهة التفصيلية."
+        "settings_title": "⚙️ <b>الإعدادات الشخصية</b>\nالمنطقة الزمنية: <b>{timezone}</b>\nالوضع المتقدم: <b>{advanced}</b>\nتنبيهات الأسعار: <b>{price_alerts}</b> · تنبيهات الغاز: <b>{gas_alerts}</b>\n\nاختر المنطقة الزمنية أو فئات التنبيه أو الواجهة التفصيلية.",
         "settings_advanced_toggle": "تبديل الوضع المتقدم",
         "settings_price_toggle": "تنبيهات الأسعار: {state}",
         "settings_gas_toggle": "تنبيهات الغاز: {state}",
