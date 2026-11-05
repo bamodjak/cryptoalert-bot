@@ -93,6 +93,21 @@ def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
         input_field_placeholder="Orbsat · Dashboard, markets and alerts",
     )
 
+
+async def edit_message_if_changed(
+    message: Message,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
+    """Ignore Telegram's harmless no-op edit response; propagate real edit failures."""
+    try:
+        await message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+
+
+
 def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text=f"🗑 #{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}")]
@@ -381,7 +396,7 @@ async def cb_market(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
         text = await _market_snapshot(prices, u.language)
     except PriceError:
         text = tr(u.language, "market_snapshot_unavailable")
-    await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+    await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
 
 
 
@@ -433,7 +448,7 @@ async def cb_movers(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
         text = await _market_movers_snapshot(prices, u.language)
     except PriceError:
         text = tr(u.language, "market_movers_unavailable")
-    await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+    await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
 
 
 
@@ -464,7 +479,7 @@ async def cb_advisor(cb: CallbackQuery, session: AsyncSession, prices: PriceServ
         text = format_advisory(rows, u.language)
     except AdvisorUnavailable:
         text = tr(u.language, "advisor_unavailable")
-    await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+    await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
 
 
 @router.message(Command("alert"))
