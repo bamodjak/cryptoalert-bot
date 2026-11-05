@@ -169,7 +169,7 @@ async def cb_language(cb: CallbackQuery, session: AsyncSession):
 @router.message(Command("help"))
 async def cmd_help(m: Message, session: AsyncSession):
     u = await get_user(session, m.from_user)
-    await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
+    await m.answer(tr(u.language, "help_text"), reply_markup=nav_keyboard(u.id, show_back=True, lang=u.language))
 
 
 @router.callback_query(F.data.in_({"nav:home", "nav:back", "nav:help"}))
