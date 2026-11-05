@@ -63,12 +63,14 @@ def test_polling_lease_waits_for_previous_deployment_and_releases():
         task = asyncio.create_task(main.run_polling_with_lock(dispatcher, object(), redis, stop))
 
         await asyncio.wait_for(dispatcher.started.wait(), timeout=1)
+        assert main.telegram_transport_ready is True
         stop.set()
         await asyncio.wait_for(task, timeout=1)
 
         assert lock.acquire_calls == 2
         assert dispatcher.start_calls == 1
         assert lock.released
+        assert main.telegram_transport_ready is False
 
     original_retry = main.POLLING_LOCK_RETRY_SECONDS
     original_grace = main.POLLING_STARTUP_GRACE_SECONDS
