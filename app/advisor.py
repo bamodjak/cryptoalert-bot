@@ -49,6 +49,111 @@ def _rsi(values: list[float], period: int = 14) -> float:
     return 100 - (100 / (1 + gains / losses))
 
 
+
+def _score_signal(
+    price: float, ema20: float, ema50: float, momentum_24h: float,
+    momentum_7d: float, rsi: float, volume_ratio: float, realized_vol: float,
+) -> tuple[int, list[str]]:
+    """Return the transparent rule score and stable explanation keys."""
+    score = 0
+    reasons = []
+    if price > ema20 > ema50:
+        score += 2
+        reasons.append("trend_bullish")
+    elif price > ema20:
+        score += 1
+        reasons.append("trend_above_ema20")
+    elif price < ema20 < ema50:
+        score -= 2
+        reasons.append("trend_bearish")
+    else:
+        score -= 1
+        reasons.append("trend_below_ema20")
+    if momentum_24h > 0.012:
+        score += 1
+        reasons.append("momentum_24h_positive")
+    elif momentum_24h < -0.012:
+        score -= 1
+        reasons.append("momentum_24h_negative")
+    else:
+        reasons.append("momentum_24h_neutral")
+    if momentum_7d > 0.04:
+        score += 1
+        reasons.append("momentum_7d_positive")
+    elif momentum_7d < -0.04:
+        score -= 1
+        reasons.append("momentum_7d_negative")
+    else:
+        reasons.append("momentum_7d_neutral")
+    if 52 <= rsi <= 68:
+        score += 1
+        reasons.append("rsi_supportive")
+    elif rsi >= 76 or rsi <= 30:
+        score -= 1
+        reasons.append("rsi_extreme")
+    else:
+        reasons.append("rsi_neutral")
+    if volume_ratio >= 1.25 and momentum_24h > 0:
+        score += 1
+        reasons.append("volume_confirmation")
+    else:
+        reasons.append("volume_no_confirmation")
+    if realized_vol >= 0.20:
+        score = max(-1, min(1, score))
+        reasons.append("volatility_high")
+    elif realized_vol >= 0.12:
+        reasons.append("volatility_elevated")
+    elif realized_vol >= 0.06:
+        reasons.append("volatility_moderate")
+    else:
+        reasons.append("volatility_calm")
+    return score, reasons
+
+
+def _historical_evaluation(rows: list[list], horizon_candles: int = 6) -> dict | None:
+    """Evaluate prior closed-candle signals against the next 24h; fees/slippage excluded."""
+    closed_rows = rows[:-1]  # Exclude the currently forming Binance candle.
+    candles = [
+        (float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5]))
+        for row in closed_rows
+    ]
+    closes = [candle[3] for candle in candles]
+    volumes = [candle[4] for candle in candles]
+    if len(closes) < 70:
+        return None
+    outcomes = []
+    for index in range(60, len(closes) - horizon_candles):
+        history = closes[:index + 1]
+        price = closes[index]
+        momentum_24h = price / closes[index - 6] - 1
+        momentum_7d = price / closes[index - 42] - 1
+        rsi = _rsi(history)
+        ema20, ema50 = _ema(history, 20), _ema(history, 50)
+        volume_base = sum(volumes[index - 20:index]) / 20
+        volume_ratio = volumes[index] / volume_base if volume_base > 0 else 1.0
+        daily_returns = [
+            closes[j] / closes[j - 6] - 1
+            for j in range(max(6, index - 42), index + 1)
+        ]
+        realized_vol = math.sqrt(sum(value * value for value in daily_returns) / max(1, len(daily_returns)))
+        score, _ = _score_signal(
+            price, ema20, ema50, momentum_24h, momentum_7d, rsi, volume_ratio, realized_vol,
+        )
+        direction = 1 if score >= 3 else -1 if score <= -3 else 0
+        if not direction:
+            continue
+        forward_return = closes[index + horizon_candles] / price - 1
+        outcomes.append(forward_return * direction)
+    if not outcomes:
+        return None
+    return {
+        "samples": len(outcomes),
+        "win_rate": sum(value > 0 for value in outcomes) / len(outcomes),
+        "average_return": sum(outcomes) / len(outcomes),
+        "horizon_hours": horizon_candles * 4,
+    }
+
+
 def _analyse_klines(symbol: str, rows: list[list]) -> dict:
     candles = [
         (float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5]))
