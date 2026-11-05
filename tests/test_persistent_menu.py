@@ -50,3 +50,35 @@ def test_telegram_command_menu_exposes_every_public_command():
         "gasalert", "del", "cancel", "premium", "help", "language",
         "settings", "terms", "paysupport",
     } <= commands
+
+def test_persistent_markets_action_uses_market_overview(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.handlers as handlers
+    from app.i18n import tr
+
+    async def scenario():
+        user = SimpleNamespace(id=123, language="en")
+        monkeypatch.setattr(handlers, "get_user", AsyncMock(return_value=user))
+        monkeypatch.setattr(
+            handlers,
+            "market_snapshot_text",
+            lambda snapshot, language: f"snapshot:{snapshot['market_cap_usd']}:{language}",
+        )
+        prices = SimpleNamespace(
+            market_overview=AsyncMock(return_value={"market_cap_usd": 123})
+        )
+        message = SimpleNamespace(
+            text=tr("en", "quick_markets"),
+            from_user=SimpleNamespace(id=123),
+            answer=AsyncMock(),
+        )
+
+        await handlers.persistent_menu_action(message, None, prices)
+
+        prices.market_overview.assert_awaited_once()
+        assert message.answer.await_args.args[0] == "snapshot:123:en"
+
+    asyncio.run(scenario())
