@@ -30,6 +30,7 @@ from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
 from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
 from .prices import PriceError, PriceService
+from .advisor import AdvisorUnavailable, build_advisory, format_advisory
 
 class AlertCustomInput(StatesGroup):
     waiting = State()
@@ -56,6 +57,7 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
         [InlineKeyboardButton(text=tr(lang, "watchlist"), callback_data="wl:open")],
+        [InlineKeyboardButton(text=tr(lang, "advisor"), callback_data="advisor:open")],
         [
             InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
             InlineKeyboardButton(text=tr(lang, "premium"), callback_data="dash:premium"),
@@ -431,6 +433,37 @@ async def cb_movers(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
         text = await _market_movers_snapshot(prices, u.language)
     except PriceError:
         text = tr(u.language, "market_movers_unavailable")
+    await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+
+
+
+
+@router.message(Command("signals"))
+async def cmd_signals(m: Message, session: AsyncSession, prices: PriceService, redis: Redis):
+    u = await get_user(session, m.from_user)
+    if not u.is_premium:
+        return await m.answer(tr(u.language, "advisor_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
+    try:
+        rows = await build_advisory(prices.http, redis)
+        text = format_advisory(rows, u.language)
+    except AdvisorUnavailable:
+        text = tr(u.language, "advisor_unavailable")
+    await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+
+
+@router.callback_query(F.data == "advisor:open")
+async def cb_advisor(cb: CallbackQuery, session: AsyncSession, prices: PriceService, redis: Redis):
+    await cb.answer()
+    u = await get_user(session, cb.from_user)
+    if not cb.message:
+        return
+    if not u.is_premium:
+        return await cb.message.edit_text(tr(u.language, "advisor_premium_only"), reply_markup=premium_keyboard(u.language))
+    try:
+        rows = await build_advisory(prices.http, redis)
+        text = format_advisory(rows, u.language)
+    except AdvisorUnavailable:
+        text = tr(u.language, "advisor_unavailable")
     await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
