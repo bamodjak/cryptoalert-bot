@@ -4,6 +4,7 @@ import time
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from .assets import get_asset
 from .i18n import tr
 from .parsing import fmt_compact_usd, fmt_usd
 
@@ -47,9 +48,12 @@ def asset_detail_text(coin: dict, language: str, payload: dict, advanced: bool =
 
 def asset_detail_keyboard(symbol: str, language: str, back_callback: str) -> InlineKeyboardMarkup:
     """Keep the same contextual actions available wherever an asset is opened."""
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text=tr(language, "asset_create_alert"), callback_data=f"create:coin:{symbol.lower()}")],
         [InlineKeyboardButton(text=tr(language, "asset_add_watchlist"), callback_data=f"wl:add:{symbol.lower()}")],
-        [InlineKeyboardButton(text=tr(language, "asset_analysis"), callback_data="advisor:open")],
-        [InlineKeyboardButton(text=tr(language, "back"), callback_data=back_callback)],
-    ])
+    ]
+    asset = get_asset(symbol)
+    if asset and asset.advisor_enabled:
+        rows.append([InlineKeyboardButton(text=tr(language, "asset_analysis"), callback_data="advisor:open")])
+    rows.append([InlineKeyboardButton(text=tr(language, "back"), callback_data=back_callback)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
