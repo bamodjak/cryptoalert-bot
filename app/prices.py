@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -245,6 +246,105 @@ class PriceService:
             if isinstance(exc, PriceError):
                 raise
             raise PriceError("Global market data is unavailable") from exc
+
+
+    async def market_movers(self) -> dict:
+        """Return the strongest 24h movers among the 100 largest assets by market cap."""
+        cache_key = "cg:movers"
+        stale_key = "cg:movers:stale"
+        cached = await self.redis.get(cache_key)
+        if cached is not None:
+            try:
+                payload = json.loads(cached)
+                if (
+                    isinstance(payload, dict)
+                    and isinstance(payload.get("gainers"), list)
+                    and isinstance(payload.get("losers"), list)
+                    and isinstance(payload.get("fetched_at"), int)
+                ):
+                    return payload
+                raise ValueError("invalid cached market movers structure")
+            except (TypeError, ValueError):
+                log.warning("discarding malformed cached market movers")
+
+        stale = await self.redis.get(stale_key)
+        stale_payload = None
+        if stale is not None:
+            try:
+                candidate = json.loads(stale)
+                if (
+                    isinstance(candidate, dict)
+                    and isinstance(candidate.get("gainers"), list)
+                    and isinstance(candidate.get("losers"), list)
+                    and isinstance(candidate.get("fetched_at"), int)
+                ):
+                    stale_payload = candidate
+                else:
+                    raise ValueError("invalid stale market movers structure")
+            except (TypeError, ValueError):
+                log.warning("discarding malformed stale market movers")
+
+        try:
+            if await self.redis.exists("cg:rate_limited"):
+                raise PriceError("CoinGecko is temporarily rate-limited")
+            rows = await self._get(
+                "/coins/markets",
+                {
+                    "vs_currency": "usd",
+                    "order": "market_cap_desc",
+                    "per_page": 100,
+                    "page": 1,
+                    "sparkline": "false",
+                    "price_change_percentage": "24h",
+                },
+            )
+            if not isinstance(rows, list):
+                raise ValueError("invalid market movers response")
+            candidates = []
+            for row in rows:
+                try:
+                    change = float(row["price_change_percentage_24h"])
+                    price = float(row["current_price"])
+                    market_cap = float(row["market_cap"])
+                    symbol = str(row["symbol"]).strip().upper()
+                    name = str(row["name"]).strip()
+                    if (
+                        not symbol or not name
+                        or not all(math.isfinite(value) for value in (price, market_cap, change))
+                        or price <= 0 or market_cap < 10_000_000
+                        or not (-100 <= change <= 10000)
+                    ):
+                        continue
+                    candidates.append({
+                        "id": str(row["id"]),
+                        "symbol": symbol[:12],
+                        "name": name[:48],
+                        "price_usd": price,
+                        "change_24h": change,
+                        "market_cap_usd": market_cap,
+                    })
+                except (KeyError, TypeError, ValueError):
+                    continue
+            if len(candidates) < 5:
+                raise ValueError("insufficient valid market data")
+            payload = {
+                "gainers": sorted(candidates, key=lambda item: item["change_24h"], reverse=True)[:5],
+                "losers": sorted(candidates, key=lambda item: item["change_24h"])[:5],
+                "fetched_at": int(time.time()),
+                "stale": False,
+                "universe": "top_100_by_market_cap",
+            }
+            encoded = json.dumps(payload, separators=(",", ":"))
+            await self.redis.set(cache_key, encoded, ex=180)
+            await self.redis.set(stale_key, encoded, ex=1800)
+            return payload
+        except (PriceError, KeyError, TypeError, ValueError) as exc:
+            if stale_payload is not None:
+                stale_payload["stale"] = True
+                return stale_payload
+            if isinstance(exc, PriceError):
+                raise
+            raise PriceError("Market movers are temporarily unavailable") from exc
 
     async def gas_gwei(self) -> float:
         cached = await self.redis.get("gas:gwei")
