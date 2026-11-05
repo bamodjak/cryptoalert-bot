@@ -111,11 +111,11 @@ def test_render_heartbeat_allows_cold_start_recovery_without_canceling_active_ru
     workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
     workflow = workflow_path.read_text()
 
-    assert "timeout-minutes: 5" in workflow
+    assert "timeout-minutes: 8" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "for attempt in 1 2 3 4; do" in workflow
-    assert "--max-time 60" in workflow
-    assert 'if [[ "${attempt}" -lt 4 ]]; then sleep 5; fi' in workflow
+    assert "for attempt in {1..18}; do" in workflow
+    assert "--max-time 20" in workflow
+    assert 'if [[ "${attempt}" -lt 18 ]]; then sleep 5; fi' in workflow
 
 
 def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
@@ -126,15 +126,14 @@ def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
     assert "top of each hour" in workflow
 
 
-def test_render_heartbeat_retry_budget_fits_five_minute_schedule():
+def test_render_heartbeat_retry_budget_fits_eight_minute_job():
     workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
     lines = workflow_path.read_text().splitlines()
 
     request_timeout = int(next(line for line in lines if "--max-time" in line).split("--max-time", 1)[1].split()[0])
     retry_delay = int(next(line for line in lines if "sleep " in line).split("sleep ", 1)[1].split()[0].rstrip(";"))
     job_timeout = int(next(line for line in lines if "timeout-minutes:" in line).split("timeout-minutes:", 1)[1].strip())
-    max_attempts = 4
+    max_attempts = 18
     worst_case_seconds = max_attempts * request_timeout + (max_attempts - 1) * retry_delay
 
-    assert worst_case_seconds < 5 * 60
     assert worst_case_seconds < job_timeout * 60

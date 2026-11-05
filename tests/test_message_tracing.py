@@ -1,10 +1,12 @@
 import asyncio
 import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
-from app import main
+from app import handlers, main
 from app.handlers import cmd_start, router as user_router
+from app.i18n import welcome_text
 from app.middlewares import MessageTraceMiddleware, safe_message_action
 
 
@@ -43,6 +45,7 @@ def test_message_trace_records_handler_failure_and_reraises(caplog):
         text="/start",
         chat=SimpleNamespace(type="private"),
         from_user=SimpleNamespace(id=987654321),
+        answer=AsyncMock(),
     )
 
     async def handler(received_event, data):
@@ -56,9 +59,32 @@ def test_message_trace_records_handler_failure_and_reraises(caplog):
             asyncio.run(run())
 
     assert "telegram_message failed command=/start chat_type=private" in caplog.text
+    event.answer.assert_awaited_once()
+    assert "Please try /start again" in event.answer.await_args.args[0]
     assert "987654321" not in caplog.text
 
 
 def test_start_command_handler_is_registered_on_the_user_router_used_by_main():
     assert main.router is user_router
     assert any(handler.callback is cmd_start for handler in user_router.message.handlers)
+
+
+
+def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
+    user = SimpleNamespace(id=12345, language="en")
+    get_user = AsyncMock(return_value=user)
+    monkeypatch.setattr(handlers, "get_user", get_user)
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=12345),
+        answer=AsyncMock(),
+    )
+    command = SimpleNamespace(args=None)
+
+    asyncio.run(cmd_start(message, command, object()))
+
+    get_user.assert_awaited_once()
+    message.answer.assert_awaited_once()
+    args, kwargs = message.answer.await_args
+    assert args[0] == welcome_text("en")
+    assert kwargs["reply_markup"] is not None
