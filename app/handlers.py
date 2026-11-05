@@ -44,7 +44,7 @@ HELP = (
     "<b>Welcome to Orbsat Crypto Alerts 👋</b>\n"
     "Your crypto alerts, made simple. No command syntax to learn — just tap through the options.\n\n"
     "🔔 <b>Create an alert</b> and choose a coin, direction, and target.\n"
-    "📊 Check BTC, manage alerts, invite friends, or compare plans below.\n\n"
+    "📊 Open Market Pulse, check BTC, manage alerts, invite friends, or compare plans below.\n\n"
     f"Free: up to {settings.free_alert_limit} active alerts. Premium: {settings.premium_alert_limit} alerts + Ethereum gas alerts for "
     f"{settings.premium_price_stars} ⭐ / {settings.premium_days} days.\n\n"
     "<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>"
