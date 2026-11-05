@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import math
+import os
 import time
 
 import aiohttp
@@ -24,6 +25,7 @@ UNIVERSE = tuple(
 )
 CACHE_KEY = "advisor:premium:latest"
 CACHE_SECONDS = 300
+COINGECKO_IDS = {asset.symbol.upper(): asset.coin_id for asset in CORE_ASSETS}
 
 
 class AdvisorUnavailable(Exception):
@@ -242,8 +244,37 @@ async def _fetch_one(http: aiohttp.ClientSession, symbol: str) -> dict | None:
                 "Advisor candle provider failed symbol=%s host=%s status=%s error=%s",
                 symbol, base.split("//", 1)[-1], status or "-", type(exc).__name__,
             )
-    log.error("Advisor history unavailable for %s after %d provider attempts: %s",
-              symbol, len(bases), type(last_error).__name__ if last_error else "unknown")
+    # Binance can return HTTP 418 from cloud-hosted regions. Fall back to
+    # CoinGecko's public 30-day OHLC endpoint, which provides 4h candles on
+    # the free/demo tier. OHLC has no volume field, so volume confirmation is
+    # deliberately neutral rather than fabricated.
+    asset_symbol = symbol.removesuffix("USDT").upper()
+    coin_id = COINGECKO_IDS.get(asset_symbol)
+    if coin_id:
+        try:
+            headers = {"accept": "application/json"}
+            if os.getenv("COINGECKO_API_KEY"):
+                headers["x-cg-demo-api-key"] = os.environ["COINGECKO_API_KEY"]
+            async with http.get(
+                f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                params={"vs_currency": "usd", "days": "30"},
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                response.raise_for_status()
+                candles = await response.json()
+            # CoinGecko OHLC rows are [timestamp, open, high, low, close].
+            rows = [list(row) + [0.0] for row in candles if isinstance(row, (list, tuple)) and len(row) >= 5]
+            result = _analyse_klines(asset_symbol, rows)
+            result["source"] = "coingecko"
+            log.info("Advisor history loaded via CoinGecko fallback symbol=%s candles=%d", asset_symbol, len(rows))
+            return result
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, KeyError) as exc:
+            log.warning("Advisor CoinGecko OHLC fallback failed symbol=%s status=%s error=%s",
+                        asset_symbol, getattr(exc, "status", "-"), type(exc).__name__)
+
+    log.error("Advisor history unavailable for %s after Binance and CoinGecko attempts: %s",
+              symbol, type(last_error).__name__ if last_error else "unknown")
     return None
 
 
@@ -320,7 +351,7 @@ def format_advisory(rows: list[dict], language: str = "en") -> str:
         "Method: transparent, volatility-aware rule ensemble over 4h exchange candles. Scores are heuristic ranks, NOT probabilities.",
         "Historical evaluation is an in-sample directional check on prior closed candles; it is not a forecast and excludes fees, slippage and execution constraints.",
         "Risk controls: high-volatility regime suppresses conviction; neutral signals do not force a trade. Levels are research references, not execution instructions.",
-        "Data source: Binance public market data · cached 5 min.",
+        "Data source: Binance public market data; CoinGecko OHLC fallback where needed · cached 5 min.",
         "<i>Research and educational market analysis only. Not individualized financial advice. No return is guaranteed; verify fees, slippage and liquidity.</i>",
     ])
     return "\n\n".join(lines)
