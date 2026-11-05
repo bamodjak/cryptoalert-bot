@@ -10,7 +10,8 @@
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
 - Referral links and join counts, payment support, service terms and concise notification copy
 - Price feed uses CoinGecko with CoinPaprika fallback for supported assets; provider quotes are cached in Redis
-- `/prices` displays the top 33 assets by market capitalization with individual selection or a complete price list, 24-hour change, provider fallback and stale-data protection\n- `/market` shows total crypto market capitalization, 24-hour trading volume and market-cap change, BTC dominance, and active asset count; results are cached briefly with a bounded stale-data fallback
+- `/prices` displays the top 33 assets by market capitalization with individual selection or a complete price list, 24-hour change, provider fallback and stale-data protection
+- `/market` shows total crypto market capitalization, 24-hour trading volume and market-cap change, BTC dominance, and active asset count; results are cached briefly with a bounded stale-data fallback
 - `/movers` shows the top five 24-hour gainers and losers among the 100 largest assets by market cap, with a $10M minimum market cap, cached data and a stale-data fallback
 - `/watchlist` tracks up to 10 supported assets per Telegram account, shows cached USD quotes, and supports guided add/remove actions
 - Premium `/signals` quantitative research desk ranks BTC, ETH, SOL, BNB, XRP, DOGE, LINK and AVAX using 4h exchange OHLCV history, multi-horizon momentum, EMA trend, RSI, ATR, volume confirmation and volatility-regime controls; cached for five minutes
@@ -47,33 +48,52 @@ The CI workflow checks Python compilation and imports, generates offline migrati
 1. In Telegram, open @BotFather → `/newbot` → copy the token.
 2. Get your own user id from @userinfobot (this is `ADMIN_IDS`).
 
-## 2. Server (Oracle Cloud Always Free)
-1. Sign up at cloud.oracle.com (card needed for verification only).
-2. Create instance → Image **Ubuntu 24.04** → Shape **VM.Standard.A1.Flex**, 2 OCPU / 12 GB → add your SSH key.
-   If you get "out of capacity", retry later or try another availability domain.
-3. SSH in and install Docker:
-   ```bash
-   sudo apt update && sudo apt install -y docker.io docker-compose-v2 git
-   sudo usermod -aG docker $USER && newgrp docker
-   ```
+## 2. Production deployment (Render)
 
-## 3. Deploy (polling mode — no domain needed)
+The production deployment uses Render. Keep the Telegram bot, PostgreSQL and Redis connected through their private/internal service URLs.
+
+1. In Render, create a **Web Service** from this GitHub repository and select the `main` branch.
+2. Choose **Docker** as the runtime. The repository Dockerfile runs database migrations and starts the bot.
+3. Set the health-check path to `/health`. Render supplies the `PORT` environment variable; the application listens on it.
+4. Create or attach a PostgreSQL database and a Redis instance in the same Render region. Use their **internal** connection URLs.
+5. Configure the environment variables below. Keep credentials in Render's Environment settings, never in Git.
+
+Required environment:
+- `BOT_TOKEN` — token from @BotFather.
+- `BOT_USERNAME` — Telegram username without the @.
+- `ADMIN_IDS` — comma-separated numeric Telegram user IDs.
+- `OWNER_ID` — owner's numeric Telegram user ID.
+- `DATABASE_URL` — Render PostgreSQL internal URL. The app normalizes standard PostgreSQL URLs for async SQLAlchemy.
+- `REDIS_URL` — Render Redis internal URL.
+- `POSTGRES_PASSWORD` is only needed for the Docker Compose self-hosted database; it is not used by the managed Render database.
+
+Optional settings include `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`. Leave `WEBHOOK_BASE_URL` empty for the default polling mode. Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
+
+After deployment, verify:
+- `/` returns the service landing response.
+- `/health` returns HTTP 200 and reports Telegram transport and worker readiness.
+- The bot responds to `/start` in Telegram.
+- Render logs show successful database migrations, router registration and Telegram polling.
+
+Deploys from `main` are automatic. Database migrations run at container startup; take a database backup before deploying schema changes.
+
+## 3. Self-host with Docker Compose (optional)
+
+For a separate self-managed installation, create `.env` from `.env.example`, set `BOT_TOKEN`, `ADMIN_IDS`, `OWNER_ID`, database credentials and other required values, then run:
+
 ```bash
-# copy this folder to the server (scp -r cryptoalert ubuntu@SERVER_IP:~) then:
-cd cryptoalert
-cp .env.example .env && nano .env      # set BOT_TOKEN, ADMIN_IDS, passwords
+cp .env.example .env
+# Edit .env and set strong unique credentials.
 docker compose up -d --build
-docker compose logs -f bot             # should say "polling mode"
-curl localhost:8080/health
+docker compose logs -f bot
+curl http://localhost:8080/health
 ```
-Keep `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` identical.
 
-## 4. Optional: webhook mode (faster, scales better)
-1. Point a domain at the server (a free DuckDNS subdomain works).
-2. Open ports 80/443 in the Oracle VCN Security List **and** on the VM:
-   `sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -j ACCEPT && sudo netfilter-persistent save`
-3. In `.env` set `WEBHOOK_BASE_URL=https://your.domain`, `WEBHOOK_SECRET=<random>`, `DOMAIN=your.domain`.
-4. `docker compose --profile webhook up -d --build` (Caddy gets HTTPS automatically).
+Keep `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` identical. The Compose stack provides PostgreSQL and Redis. For webhook mode, configure a public HTTPS domain, `WEBHOOK_BASE_URL`, `WEBHOOK_SECRET` and `DOMAIN`, then start the optional Caddy profile:
+
+```bash
+docker compose --profile webhook up -d --build
+```
 
 ## Operations
 - Update: `git pull && docker compose up -d --build` (migrations run automatically)

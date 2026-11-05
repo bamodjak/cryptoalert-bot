@@ -159,6 +159,32 @@ TEXT = {
         "no_alerts": "You have no active alerts yet. Tap below to create your first alert.",
         "active_alerts": "🔔 <b>Your active alerts</b>",
         "entitlement_paused": "Paused until Premium is renewed",
+        "help_text": """<b>Orbsat help · Quick guide</b>
+
+<b>Alerts</b>
+/create — Build a price alert with buttons. Choose an asset, direction and target.
+/alerts — View, edit, snooze, resume or remove alerts.
+/history — See recently triggered alerts.
+/cancel — Cancel an alert setup in progress.
+
+<b>Markets</b>
+/price SYMBOL — Check one asset (example: /price BTC).
+/prices — Browse the top 33 crypto assets or show all prices.
+/market — Global market cap, volume and BTC dominance.
+/movers — Top 24-hour gainers and losers.
+/gas — Current Ethereum network gas.
+/watchlist — Track up to 10 assets.
+/live — Premium live market dashboard.
+/signals — Premium quantitative market research.
+
+<b>Account</b>
+/premium — View Premium features and payment options.
+/settings — Set timezone, notification categories and advanced mode.
+/language — Switch between English and Arabic.
+/terms — Service terms.
+/paysupport — Payment and refund support.
+
+Use the buttons on the home screen if you prefer not to type commands. Market data can be delayed; alerts are best-effort. Nothing here is financial advice.""",
         "welcome": "<b>ORBSAT · CRYPTO INTELLIGENCE</b>\nYour market, your alerts, one place.\n\n📊 Track the global market and top movers.\n🔔 Build price alerts in a few taps.\n⭐ Free: {free} active alerts · Premium: {premium} alerts + Ethereum gas alerts ({stars} ⭐ / {days} days).\n\n<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>",
         "premium_title": "<b>⭐ Choose your plan</b>",
         "free_plan": "<b>FREE · 0 ⭐</b>\n• Up to {free} active alerts\n• Core crypto price alerts\n• Telegram notifications",
@@ -347,6 +373,32 @@ TEXT = {
         "no_alerts": "ليس لديك تنبيهات نشطة بعد. اضغط أدناه لإنشاء أول تنبيه.",
         "active_alerts": "🔔 <b>تنبيهاتك النشطة</b>",
         "entitlement_paused": "متوقف حتى تجديد بريميوم",
+        "help_text": """<b>دليل أوربسات · المساعدة السريعة</b>
+
+<b>التنبيهات</b>
+/create — إنشاء تنبيه سعر عبر الأزرار باختيار العملة والاتجاه والهدف.
+/alerts — عرض التنبيهات وتعديلها أو تأجيلها أو استئنافها أو حذفها.
+/history — عرض التنبيهات التي تم تفعيلها مؤخراً.
+/cancel — إلغاء إعداد تنبيه جارٍ.
+
+<b>السوق</b>
+/price SYMBOL — عرض سعر عملة واحدة، مثال: /price BTC.
+/prices — تصفح أفضل 33 عملة أو عرض الأسعار كلها.
+/market — القيمة السوقية الإجمالية وحجم التداول وهيمنة بيتكوين.
+/movers — العملات الأكثر ارتفاعاً وانخفاضاً خلال 24 ساعة.
+/gas — رسوم شبكة إيثيريوم الحالية.
+/watchlist — متابعة ما يصل إلى 10 أصول.
+/live — لوحة السوق المباشرة لمشتركي بريميوم.
+/signals — أبحاث كمية للسوق لمشتركي بريميوم.
+
+<b>الحساب</b>
+/premium — عرض مزايا بريميوم وخيارات الدفع.
+/settings — ضبط المنطقة الزمنية وفئات التنبيهات والوضع المتقدم.
+/language — التبديل بين العربية والإنجليزية.
+/terms — شروط الخدمة.
+/paysupport — المساعدة في الدفع والاسترداد.
+
+يمكنك استخدام أزرار الصفحة الرئيسية بدلاً من كتابة الأوامر. قد تتأخر بيانات السوق، والتنبيهات حسب أفضل جهد وليست نصيحة مالية.""",
         "welcome": "<b>مرحباً بك في ORBSAT · ذكاء سوق العملات الرقمية</b>\nالسوق وتنبيهاتك في مكان واحد.\n\n📊 تابع السوق العالمي والعملات الأكثر حركة.\n🔔 أنشئ تنبيهات الأسعار بخطوات بسيطة.\n⭐ المجانية: {free} تنبيهات نشطة · بريميوم: {premium} تنبيهاً وتنبيهات رسوم إيثيريوم ({stars} ⭐ / {days} يوماً).\n\n<i>قد تتأخر بيانات السوق. التنبيهات حسب أفضل جهد وليست نصيحة مالية.</i>",
         "premium_title": "<b>⭐ اختر خطتك</b>",
         "free_plan": "<b>مجانية · 0 ⭐</b>\n• حتى {free} تنبيهات نشطة\n• تنبيهات أسعار العملات الرقمية\n• إشعارات تيليجرام",

@@ -28,3 +28,12 @@ def test_target_price_example_uses_dynamic_current_price_in_supported_languages(
     assert "$80,000" in tr("ar", "target_prompt", current_price="$80,000")
     assert "{current_price}" not in tr("en", "target_prompt_no_price")
     assert "{current_price}" not in tr("ar", "target_prompt_no_price")
+
+
+def test_help_guide_covers_core_commands_in_both_languages():
+    for language in ("en", "ar"):
+        guide = tr(language, "help_text")
+        for command in ("/create", "/alerts", "/history", "/prices", "/market", "/movers", "/watchlist", "/premium", "/settings", "/paysupport"):
+            assert command in guide
+    assert "top 33" in tr("en", "help_text")
+    assert "أفضل 33" in tr("ar", "help_text")
