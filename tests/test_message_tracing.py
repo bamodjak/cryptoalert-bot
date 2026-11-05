@@ -166,3 +166,4 @@ def test_real_telegram_message_edit_error_is_reraised():
 
     with pytest.raises(TelegramBadRequest, match="message to edit not found"):
         asyncio.run(edit_message_if_changed(message, "new"))
+
