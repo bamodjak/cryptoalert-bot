@@ -186,7 +186,7 @@ class PriceService:
                 response.raise_for_status()
                 return await response.json()
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError) as exc:
-            log.warning("CoinPaprika market fallback failed path=%s error=%s", path, type(exc).__name__)
+            log.warning("CoinPaprika market fallback failed path=%s status=%s error=%s", path, getattr(exc, "status", "-"), type(exc).__name__)
             return None
 
     async def market_overview(self) -> dict:
@@ -261,7 +261,12 @@ class PriceService:
         if cached is not None:
             try:
                 payload = json.loads(cached)
-                if isinstance(payload, dict) and isinstance(payload.get("gainers"), list) and isinstance(payload.get("losers"), list) and isinstance(payload.get("fetched_at"), int):
+                if (
+                    isinstance(payload, dict)
+                    and isinstance(payload.get("gainers"), list) and len(payload["gainers"]) >= 5
+                    and isinstance(payload.get("losers"), list) and len(payload["losers"]) >= 5
+                    and isinstance(payload.get("fetched_at"), int)
+                ):
                     return payload
                 raise ValueError("invalid cached market movers structure")
             except (TypeError, ValueError):
@@ -272,7 +277,12 @@ class PriceService:
         if stale is not None:
             try:
                 candidate = json.loads(stale)
-                if isinstance(candidate, dict) and isinstance(candidate.get("gainers"), list) and isinstance(candidate.get("losers"), list) and isinstance(candidate.get("fetched_at"), int):
+                if (
+                    isinstance(candidate, dict)
+                    and isinstance(candidate.get("gainers"), list) and len(candidate["gainers"]) >= 5
+                    and isinstance(candidate.get("losers"), list) and len(candidate["losers"]) >= 5
+                    and isinstance(candidate.get("fetched_at"), int)
+                ):
                     stale_payload = candidate
                 else:
                     raise ValueError("invalid stale market movers structure")
@@ -291,7 +301,7 @@ class PriceService:
         except PriceError as exc:
             log.warning("CoinGecko movers unavailable; trying CoinPaprika (%s)", type(exc).__name__)
             source = "coinpaprika"
-            rows = await self._paprika_json("/tickers", {"quotes": "USD", "limit": 100})
+            rows = await self._paprika_json("/tickers", {"quotes": "USD"})
 
         candidates = []
         if isinstance(rows, list):
@@ -373,7 +383,7 @@ class PriceService:
         except PriceError as exc:
             log.warning("CoinGecko top-33 prices unavailable; trying CoinPaprika (%s)", type(exc).__name__)
             source = "coinpaprika"
-            rows = await self._paprika_json("/tickers", {"quotes": "USD", "limit": 50})
+            rows = await self._paprika_json("/tickers", {"quotes": "USD"})
 
         coins = []
         if isinstance(rows, list):
