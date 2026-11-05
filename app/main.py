@@ -135,6 +135,7 @@ POLLING_LOCK_TTL_SECONDS = 45
 POLLING_STARTUP_GRACE_SECONDS = 10
 POLLING_LOCK_RETRY_SECONDS = 1
 POLLING_LOCK_RENEW_SECONDS = 10
+POLLING_TIMEOUT_SECONDS = 5
 
 
 async def _renew_polling_lock(lock, dispatcher: Dispatcher, stop: asyncio.Event) -> None:
@@ -200,6 +201,7 @@ async def run_polling_with_lock(
             await dispatcher.start_polling(
                 bot,
                 allowed_updates=dispatcher.resolve_used_update_types(),
+                polling_timeout=POLLING_TIMEOUT_SECONDS,
                 handle_signals=False,
             )
         finally:
