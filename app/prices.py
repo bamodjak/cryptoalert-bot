@@ -26,6 +26,26 @@ class PriceError(Exception):
     pass
 
 
+def _valid_global_snapshot(payload: object) -> bool:
+    """Reject incomplete or non-finite market snapshots before presenting cached data."""
+    if not isinstance(payload, dict):
+        return False
+    try:
+        market_cap = float(payload["market_cap_usd"])
+        volume = float(payload["volume_24h_usd"])
+        change = float(payload["market_cap_change_24h"])
+        dominance = float(payload["btc_dominance"])
+        active = int(payload["active_cryptocurrencies"])
+        fetched_at = int(payload["fetched_at"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+    return (
+        all(math.isfinite(value) for value in (market_cap, volume, change, dominance))
+        and market_cap > 0 and volume >= 0
+        and 0 <= dominance <= 100 and active >= 0 and fetched_at > 0
+    )
+
+
 @dataclass(frozen=True)
 class Coin:
     id: str
@@ -195,7 +215,10 @@ class PriceService:
         cached = await self.redis.get(cache_key)
         if cached is not None:
             try:
-                return json.loads(cached)
+                candidate = json.loads(cached)
+                if _valid_global_snapshot(candidate):
+                    return candidate
+                log.warning("discarding incomplete cached global market data")
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached global market data")
 
@@ -203,7 +226,11 @@ class PriceService:
         stale = await self.redis.get(stale_key)
         if stale is not None:
             try:
-                stale_payload = json.loads(stale)
+                candidate = json.loads(stale)
+                if _valid_global_snapshot(candidate):
+                    stale_payload = candidate
+                else:
+                    log.warning("discarding incomplete stale global market data")
             except (TypeError, ValueError):
                 log.warning("discarding malformed stale global market data")
 
