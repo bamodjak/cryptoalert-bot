@@ -82,16 +82,8 @@ def _analyse_klines(symbol: str, rows: list[list]) -> dict:
     volume_base = sum(volumes[-21:-1]) / 20
     volume_ratio = volumes[-1] / volume_base if volume_base > 0 else 1.0
 
-    # A volatility-aware score: trend alignment, 24h/7d momentum and RSI.
-    score = 0
-    score += 2 if price > ema20 > ema50 else 1 if price > ema20 else -2 if price < ema20 < ema50 else -1
-    score += 1 if momentum_24h > 0.012 else -1 if momentum_24h < -0.012 else 0
-    score += 1 if momentum_7d > 0.04 else -1 if momentum_7d < -0.04 else 0
-    score += 1 if 52 <= rsi <= 68 else -1 if rsi >= 76 or rsi <= 30 else 0
-    score += 1 if volume_ratio >= 1.25 and momentum_24h > 0 else 0
+    score, reasons = _score_signal(price, ema20, ema50, momentum_24h, momentum_7d, rsi, volume_ratio, realized_vol)
     regime = "high volatility" if realized_vol >= 0.12 else "moderate volatility" if realized_vol >= 0.06 else "calm"
-    if realized_vol >= 0.20:
-        score = max(-1, min(1, score))
     if score >= 3:
         stance = "BULLISH SETUP"
     elif score <= -3:
@@ -109,6 +101,8 @@ def _analyse_klines(symbol: str, rows: list[list]) -> dict:
         "momentum_7d": momentum_7d, "atr_pct": atr / price,
         "volatility": regime, "volume_ratio": volume_ratio,
         "invalidation": invalidation, "objective": objective,
+        "reasons": reasons,
+        "history": _historical_evaluation(rows),
         "timestamp": int(time.time()),
     }
 
