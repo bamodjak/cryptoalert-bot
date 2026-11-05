@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
+from .keyboards import edit_message_if_changed
 from .db import (
     AdminAudit, Giveaway, GiveawayEntry, GiveawayWinner, ManualPayment, Payment, PremiumGrant, User, utcnow
 )
@@ -357,7 +358,7 @@ async def cancel_broadcast(cb: CallbackQuery, redis: Redis):
     if cb.message:
         payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
         await redis.delete(payload_key)
-        await cb.message.edit_text("Broadcast cancelled.")
+        await edit_message_if_changed(cb.message, "Broadcast cancelled.")
     await cb.answer()
 
 
@@ -408,4 +409,4 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     await redis.delete(payload_key)
     if await redis.get(global_lock_key) == lock_key:
         await redis.delete(global_lock_key)
-    await cb.message.edit_text(f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
+    await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
