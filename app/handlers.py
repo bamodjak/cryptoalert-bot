@@ -54,15 +54,16 @@ HELP = (
 
 
 def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> InlineKeyboardMarkup:
+    """Compact, task-first navigation. Administrative controls remain owner-only."""
     rows = [
         [InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open")],
         [
-            InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
-            InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
-        ],
-        [
             InlineKeyboardButton(text=tr(lang, "market"), callback_data="dash:market"),
             InlineKeyboardButton(text=tr(lang, "movers"), callback_data="dash:movers"),
+        ],
+        [
+            InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
+            InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
         [
             InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
@@ -72,52 +73,32 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
             InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:home"),
         ],
+        [InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")],
     ]
     if user_id in settings.admin_id_set:
-        rows.append([
-            InlineKeyboardButton(text="🛡 Admin Panel", callback_data="admin:panel")
-        ])
+        rows.append([InlineKeyboardButton(text="🛡 Admin Panel", callback_data="admin:panel")])
     if show_back:
-        rows.append([
-            InlineKeyboardButton(text=tr(lang, "back"), callback_data="nav:back"),
-            InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home"),
-        ])
-    ref_link = f"https://t.me/{settings.bot_username}?start=ref_{user_id}"
-    share_url = (
-        "https://t.me/share/url?url=" + quote(ref_link)
-        + "&text=" + quote("Real-time Crypto Price & Ethereum Gas Alerts!")
-    )
-    rows.append([InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")])
-    rows.append([InlineKeyboardButton(text=tr(lang, "share"), url=share_url)])
+        rows.append([InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Color-coded, persistent navigation using native Telegram reply-keyboard controls.
-
-    Keep button text as existing bot commands so every tap follows the same
-    authenticated, rate-limited command path as a manually typed command.
-    """
+    """Short, human-readable quick navigation; labels route to real bot actions."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="/market", style="primary"),
-                KeyboardButton(text="/movers", style="primary"),
+                KeyboardButton(text="🏠 Dashboard", style="primary"),
+                KeyboardButton(text="📊 Markets", style="primary"),
             ],
             [
-                KeyboardButton(text="/price btc", style="primary"),
-                KeyboardButton(text="/alerts", style="primary"),
-            ],
-            [
-                KeyboardButton(text="/premium", style="success"),
-                KeyboardButton(text="/help"),
+                KeyboardButton(text="🔔 Alerts"),
+                KeyboardButton(text="⭐ Premium", style="success"),
             ],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Orbsat · Markets, alerts and Premium",
+        input_field_placeholder="Orbsat · Dashboard, markets and alerts",
     )
-
 
 def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
     rows = [
@@ -220,11 +201,58 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 "\n\n🎁 <b>Your invitation is confirmed!</b> "
                 "Your Premium access is attached to this Telegram account."
             )
-            await m.answer(welcome_text(u.language) + premium_note, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
-            await m.answer("Quick actions stay pinned below.", reply_markup=persistent_menu_keyboard())
+            await m.answer(
+                welcome_text(u.language) + premium_note,
+                reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
+            )
+            await m.answer("Use the quick actions below to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
             return
-    await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
-    await m.answer("Quick actions stay pinned below.", reply_markup=persistent_menu_keyboard())
+    await m.answer(
+        welcome_text(u.language),
+        reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
+    )
+    await m.answer("Use the quick actions below to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+
+
+@router.message(F.text.in_({"🏠 Dashboard", "📊 Markets", "🔔 Alerts", "⭐ Premium"}))
+async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService):
+    """Handle visible quick-action labels without requiring slash-command syntax."""
+    u = await get_user(session, m.from_user)
+    action = (m.text or "").strip()
+    if action == "🏠 Dashboard":
+        await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+    elif action == "📊 Markets":
+        try:
+            text = await _market_snapshot(prices, u.language)
+        except PriceError:
+            text = tr(u.language, "market_snapshot_unavailable")
+        await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+    elif action == "🔔 Alerts":
+        rows = (await session.scalars(
+            select(Alert).where(Alert.user_id == u.id, Alert.active.is_(True)).order_by(Alert.id)
+        )).all()
+        if not rows:
+            await m.answer(tr(u.language, "no_alerts"), reply_markup=nav_keyboard(u.id, lang=u.language))
+            return
+        lines = []
+        for alert in rows:
+            word = tr(u.language, "above" if alert.op == ">" else "below")
+            value = f"{alert.target:g} gwei" if alert.kind == "gas" else fmt_usd(alert.target)
+            paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if alert.entitlement_paused else ""
+            lines.append(f"{paused}#{alert.id} {alert.symbol} {word} {value}")
+        await m.answer(
+            tr(u.language, "active_alerts_header") + "\\n" + "\\n".join(lines) + "\\n\\n" + tr(u.language, "remove_alert_hint"),
+            reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
+        )
+    elif action == "⭐ Premium":
+        if u.id == settings.owner_id:
+            await m.answer(tr(u.language, "premium_owner"))
+            return
+        status = (
+            "\\n\\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
+            if u.is_premium and u.premium_until else ""
+        )
+        await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.message(Command("language"))
