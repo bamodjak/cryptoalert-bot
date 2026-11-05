@@ -6,7 +6,7 @@
 - Guided alert setup for 15 assets: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, TON, TRX, AVAX, DOT, LINK, LTC, USDT and USDC
 - One-tap current BTC price, Ethereum gas, global market pulse, alert list and inline alert deletion
 - Premium `/live` dashboard in Telegram chat with public trade-stream prices and automatic message updates (no Mini App)
-- Clear onboarding, compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
+- Clear onboarding, a persistent color-coded Telegram quick-action keyboard (markets/movers, BTC price/alerts, Premium/help), compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
 - Referral links and join counts, payment support, service terms and concise notification copy
 - Price feed uses CoinGecko with CoinPaprika fallback for supported assets; provider quotes are cached in Redis
@@ -19,6 +19,10 @@
 - Admin-only user management, Premium grants, reversible suspension, payment review, giveaways, broadcast confirmation and kill switch
 - Anti-spam throttling and idempotent Telegram Stars payment handling
 - Market data can be delayed; the bot is informational and does not provide financial advice
+
+### Telegram navigation notes
+
+The persistent reply keyboard uses Telegram Bot API button styles (`primary` for market and alert actions, `success` for Premium) and remains visible below the chat composer. Button labels deliberately remain the existing slash commands, so taps reuse the same handlers and access checks as typed commands. Telegram clients control the exact rendering; unsupported clients may display the buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support. The inline dashboard remains available for richer, message-local navigation.
 
 ## Admin tools
 
