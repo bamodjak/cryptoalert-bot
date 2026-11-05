@@ -45,6 +45,7 @@ class FakeDispatcher:
 
     async def start_polling(self, bot, **kwargs):
         assert kwargs["handle_signals"] is False
+        assert kwargs["polling_timeout"] == main.POLLING_TIMEOUT_SECONDS == 5
         assert kwargs["allowed_updates"] == ["message"]
         self.start_calls += 1
         self.started.set()
