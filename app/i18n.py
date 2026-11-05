@@ -184,6 +184,10 @@ TEXT = {
 /terms — Service terms.
 /paysupport — Payment and refund support.
 
+/alert SYMBOL OP PRICE — Create a quick text alert (example: /alert btc > 70000).
+/gasalert GWEI — Premium alert when Ethereum gas falls below your target.
+/del ID — Delete an alert by its ID.
+
 Use the buttons on the home screen if you prefer not to type commands. Market data can be delayed; alerts are best-effort. Nothing here is financial advice.""",
         "welcome": "<b>ORBSAT · CRYPTO INTELLIGENCE</b>\nYour market, your alerts, one place.\n\n📊 Track the global market and top movers.\n🔔 Build price alerts in a few taps.\n⭐ Free: {free} active alerts · Premium: {premium} alerts + Ethereum gas alerts ({stars} ⭐ / {days} days).\n\n<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>",
         "premium_title": "<b>⭐ Choose your plan</b>",
@@ -397,6 +401,10 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
 /language — التبديل بين العربية والإنجليزية.
 /terms — شروط الخدمة.
 /paysupport — المساعدة في الدفع والاسترداد.
+
+/alert SYMBOL OP PRICE — إنشاء تنبيه سريع بصيغة نصية.
+/gasalert GWEI — تنبيه بريميوم عند انخفاض رسوم إيثيريوم عن الهدف.
+/del ID — حذف تنبيه باستخدام رقمه.
 
 يمكنك استخدام أزرار الصفحة الرئيسية بدلاً من كتابة الأوامر. قد تتأخر بيانات السوق، والتنبيهات حسب أفضل جهد وليست نصيحة مالية.""",
         "welcome": "<b>مرحباً بك في ORBSAT · ذكاء سوق العملات الرقمية</b>\nالسوق وتنبيهاتك في مكان واحد.\n\n📊 تابع السوق العالمي والعملات الأكثر حركة.\n🔔 أنشئ تنبيهات الأسعار بخطوات بسيطة.\n⭐ المجانية: {free} تنبيهات نشطة · بريميوم: {premium} تنبيهاً وتنبيهات رسوم إيثيريوم ({stars} ⭐ / {days} يوماً).\n\n<i>قد تتأخر بيانات السوق. التنبيهات حسب أفضل جهد وليست نصيحة مالية.</i>",
