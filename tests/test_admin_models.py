@@ -151,7 +151,7 @@ def test_refund_calculation_caps_unused_time_to_remaining_account_expiry():
     assert refundable_unused_duration(start, entitlement_end, account_expiry, now) == timedelta(days=5)
 
 
-def test_refund_calculation_is_zero_before_entitlement_starts():
+def test_refund_calculation_includes_full_interval_before_entitlement_starts():
     from datetime import datetime, timedelta, timezone
     from app.entitlements import refundable_unused_duration
 
