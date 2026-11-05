@@ -90,3 +90,9 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 - User timezone is used to render triggered-alert history. The timezone database is installed as a Python dependency so ZoneInfo works in minimal containers.
 
 - The live trade stream and Telegram dashboard updater share one Redis-elected runtime lease. This keeps the in-memory quote cache and message updater on the same instance during overlapping deployments and prevents duplicate stream consumers or dashboard edits.
+
+## Notification preferences and advisor explainability
+
+- User settings persist independent price-alert and gas-alert notification toggles. Disabled categories are excluded from alert evaluation; their active rules remain stored and can resume when re-enabled.
+- The premium advisor exposes stable, human-readable reasons for trend, momentum, RSI, volume and volatility contributions.
+- The advisor includes a closed-candle historical directional evaluation with sample count, win rate and average directional return. It is explicitly in-sample, excludes fees/slippage and is not presented as a forecast.
