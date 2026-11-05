@@ -68,7 +68,10 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
             InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:help"),
         ],
-        [InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")],
+        [
+            InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose"),
+            InlineKeyboardButton(text=tr(lang, "settings"), callback_data="settings:open"),
+        ],
     ]
     if user_id in settings.admin_id_set:
         rows.append([InlineKeyboardButton(text="🛡 Admin Panel", callback_data="admin:panel")])
