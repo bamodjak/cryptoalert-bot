@@ -80,3 +80,11 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 - Do not change payment/refund or Premium entitlement semantics as part of unrelated refactors.
 - Require unit, integration, migration and smoke tests before production rollout.
 - Keep provider secrets out of logs and test fixtures.
+## Implemented experience additions
+
+- Asset details are shared by the Top-33 browser, market movers and watchlist entries. Contextual actions lead to alert creation, watchlist addition and research.
+- The curated core asset registry is shared by pricing, watchlists, the live dashboard and the advisor. Dynamic provider-ranked lists remain dynamic.
+- Persistent quick navigation and watchlist copy are localized in English and Arabic.
+- Personal settings persist timezone and advanced presentation mode. Advanced mode adds market capitalization and 24-hour volume when the provider supplies those metrics.
+- Alerts can be snoozed for one hour and resumed. The worker excludes currently snoozed alerts. Triggered alerts remain available through recent history.
+- User timezone is used to render triggered-alert history. The timezone database is installed as a Python dependency so ZoneInfo works in minimal containers.
