@@ -17,7 +17,7 @@ from redis.asyncio import Redis
 from redis.exceptions import LockNotOwnedError
 from sqlalchemy import func, select, text
 
-from . import worker
+from . import metrics, worker
 from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
@@ -79,7 +79,7 @@ def build_web_app(redis: Redis) -> web.Application:
         stale = not worker.last_success or time.time() - worker.last_success > settings.check_interval * 5
         if stale:
             return web.json_response({"ok": False, "error": "alert worker stale"}, status=503, headers=CORS_HEADERS)
-        return web.json_response({"ok": True}, headers=CORS_HEADERS)
+        return web.json_response({"ok": True, **metrics.live_status()}, headers=CORS_HEADERS)
 
     def metrics_authorized(request: web.Request) -> bool:
         token = settings.metrics_token.get_secret_value()
