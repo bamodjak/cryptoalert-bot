@@ -53,7 +53,7 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "movers"), callback_data="dash:movers"),
         ],
         [
-            InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
+            InlineKeyboardButton(text=tr(lang, "crypto_prices"), callback_data="prices:open"),
             InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
         [InlineKeyboardButton(text=tr(lang, "watchlist"), callback_data="wl:open")],
@@ -336,6 +336,88 @@ async def cmd_price(m: Message, command: CommandObject, session: AsyncSession, p
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
+
+
+def crypto_prices_keyboard(coins: list[dict], language: str) -> InlineKeyboardMarkup:
+    rows = []
+    for index in range(0, len(coins), 2):
+        pair = coins[index:index + 2]
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{coin['rank']}. {coin['symbol']}",
+                callback_data=f"prices:coin:{coin['rank']}",
+            )
+            for coin in pair
+        ])
+    rows.append([InlineKeyboardButton(text=tr(language, "prices_all"), callback_data="prices:all")])
+    rows.append([InlineKeyboardButton(text=tr(language, "back"), callback_data="nav:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def crypto_prices_text(payload: dict, language: str, selected: dict | None = None) -> str:
+    age_seconds = max(0, int(time.time()) - int(payload["fetched_at"]))
+    age = tr(language, "market_just_now") if age_seconds < 60 else tr(
+        language, "market_minutes_ago", minutes=max(1, age_seconds // 60)
+    )
+    if payload.get("stale"):
+        age += " · " + tr(language, "market_cached")
+    coins = [selected] if selected else payload["coins"]
+    lines = [tr(language, "crypto_prices_title")]
+    for coin in coins:
+        lines.append(
+            f"<b>{coin['rank']}. {coin['symbol']}</b> ({html.escape(coin['name'])}) · "
+            f"{fmt_usd(coin['price_usd'])} · 24h {coin['change_24h']:+.2f}%"
+        )
+    lines.append(tr(language, "crypto_prices_updated", age=age, source=payload.get("source", "market data")))
+    return "\\n".join(lines)
+
+
+@router.message(Command("prices"))
+async def cmd_prices(m: Message, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, m.from_user)
+    try:
+        payload = await prices.top_coins()
+        text = crypto_prices_text(payload, u.language)
+        keyboard = crypto_prices_keyboard(payload["coins"], u.language)
+    except PriceError:
+        text = tr(u.language, "crypto_prices_unavailable")
+        keyboard = nav_keyboard(u.id, lang=u.language)
+    await m.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("prices:"))
+async def cb_crypto_prices(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    try:
+        await cb.answer()
+    except TelegramBadRequest:
+        pass
+    u = await get_user(session, cb.from_user)
+    if not cb.message:
+        return
+    try:
+        payload = await prices.top_coins()
+        action = (cb.data or "").split(":")
+        if len(action) == 3 and action[1] == "coin":
+            rank = int(action[2])
+            coin = next((item for item in payload["coins"] if item["rank"] == rank), None)
+            if coin is None:
+                raise PriceError("Selected market rank is no longer available")
+            text = crypto_prices_text(payload, u.language, selected=coin)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=tr(u.language, "prices_all"), callback_data="prices:all")],
+                [InlineKeyboardButton(text=tr(u.language, "prices_back_to_list"), callback_data="prices:open")],
+            ])
+        else:
+            text = crypto_prices_text(payload, u.language)
+            keyboard = crypto_prices_keyboard(payload["coins"], u.language)
+    except (PriceError, ValueError):
+        text = tr(u.language, "crypto_prices_unavailable")
+        keyboard = nav_keyboard(u.id, lang=u.language)
+    try:
+        await cb.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 
@@ -835,11 +917,11 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
 
     if action == "price":
         try:
-            coin = await prices.resolve("btc")
-            px = (await prices.prices([coin.id])).get(coin.id) if coin else None
-            text = f"<b>{coin.symbol.upper()}</b>: {fmt_usd(px)}" if coin and px is not None else "BTC price is unavailable."
+            payload = await prices.top_coins()
+            text = crypto_prices_text(payload, u.language)
+            return await cb.message.edit_text(text, reply_markup=crypto_prices_keyboard(payload["coins"], u.language))
         except PriceError:
-            text = "The price source is busy. Try again shortly."
+            text = tr(u.language, "crypto_prices_unavailable")
     elif action == "gas":
         try:
             text = f"Ethereum gas: <b>{fmt_gwei(await prices.gas_gwei())} gwei</b>"
