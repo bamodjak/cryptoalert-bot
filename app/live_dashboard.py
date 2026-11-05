@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import User, Session
+from .assets import CORE_ASSETS
 from .i18n import tr
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
@@ -27,22 +28,9 @@ router = Router(name="live_dashboard")
 
 # These pairs mirror the assets already supported by PriceService. Pair availability
 # can vary by exchange; a missing stream simply shows as unavailable in the dashboard.
-COINS = (
-    ("bitcoin", "BTC", "Bitcoin", "btcusdt"),
-    ("ethereum", "ETH", "Ethereum", "ethusdt"),
-    ("solana", "SOL", "Solana", "solusdt"),
-    ("binancecoin", "BNB", "BNB", "bnbusdt"),
-    ("ripple", "XRP", "XRP", "xrpusdt"),
-    ("dogecoin", "DOGE", "Dogecoin", "dogeusdt"),
-    ("cardano", "ADA", "Cardano", "adausdt"),
-    ("the-open-network", "TON", "Toncoin", "tonusdt"),
-    ("tron", "TRX", "TRON", "trxusdt"),
-    ("avalanche-2", "AVAX", "Avalanche", "avaxusdt"),
-    ("polkadot", "DOT", "Polkadot", "dotusdt"),
-    ("chainlink", "LINK", "Chainlink", "linkusdt"),
-    ("litecoin", "LTC", "Litecoin", "ltcusdt"),
-    ("tether", "USDT", "Tether", ""),
-    ("usd-coin", "USDC", "USDC", "usdcusdt"),
+COINS = tuple(
+    (asset.coin_id, asset.symbol.upper(), asset.name, asset.binance_pair or "")
+    for asset in CORE_ASSETS
 )
 PAIR_TO_COIN = {pair.upper(): (coin_id, symbol, name) for coin_id, symbol, name, pair in COINS if pair}
 DASHBOARDS_KEY = "live:dashboards"
