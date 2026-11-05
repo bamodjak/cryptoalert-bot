@@ -159,7 +159,7 @@ class PriceService:
             if "usd" not in value:
                 continue
             price = float(value["usd"])
-            if price <= 0:
+            if not math.isfinite(price) or price <= 0:
                 continue
             out[cid] = price
             pipe.set(f"cg:px:{cid}", price, ex=max(10, settings.check_interval - 5))
