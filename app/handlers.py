@@ -342,7 +342,7 @@ def market_movers_text(snapshot: dict, language: str) -> str:
         age += " · " + tr(language, "market_cached")
 
     def render(items):
-        return "\\n".join(
+        return "\n".join(
             f"<b>{index}.</b> {html.escape(item['name'])} ({html.escape(item['symbol'])}) "
             f"<b>{item['change_24h']:+.2f}%</b> · {fmt_usd(item['price_usd'])}"
             for index, item in enumerate(items, 1)
