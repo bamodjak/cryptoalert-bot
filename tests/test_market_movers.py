@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.handlers import cmd_movers, market_movers_text, router as user_router
+from app.handlers import cmd_movers, market_movers_keyboard, market_movers_text, router as user_router
 from app.prices import PriceError, PriceService
 
 
@@ -202,3 +202,13 @@ def test_market_movers_falls_back_to_coinpaprika_tickers():
         assert "cg:movers" in redis.values
         service._paprika_json.assert_awaited_once_with("/tickers", {"quotes": "USD", "limit": 100})
     asyncio.run(scenario())
+
+
+def test_market_movers_keyboard_links_each_asset_to_shared_detail():
+    snapshot = {
+        "gainers": [{"id": "bitcoin", "symbol": "BTC", "change_24h": 5.5}],
+        "losers": [{"id": "ethereum", "symbol": "ETH", "change_24h": -3.2}],
+    }
+    keyboard = market_movers_keyboard(snapshot, "en")
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+    assert callbacks == ["asset:mover:bitcoin", "asset:mover:ethereum", "nav:home"]
