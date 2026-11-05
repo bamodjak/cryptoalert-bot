@@ -116,3 +116,48 @@ def test_advisor_falls_back_when_primary_binance_host_is_restricted():
         assert http.urls[1].startswith("https://api.binance.com/")
 
     asyncio.run(scenario())
+
+
+
+def test_advisor_falls_back_to_coingecko_when_binance_is_blocked():
+    class Response:
+        def __init__(self, status=0, rows=None):
+            self.status = status
+            self.rows = rows or []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        def raise_for_status(self):
+            if self.status:
+                raise aiohttp.ClientResponseError(None, (), status=self.status)
+
+        async def json(self):
+            return self.rows
+
+    class Http:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **kwargs):
+            self.urls.append(url)
+            if "api.coingecko.com" in url:
+                candles = [
+                    [row[0], row[1], row[2], row[3], row[4]]
+                    for row in _candles(1.003)
+                ]
+                return Response(rows=candles)
+            return Response(status=418)
+
+    async def scenario():
+        http = Http()
+        result = await _fetch_one(http, "BTCUSDT")
+        assert result is not None
+        assert result["symbol"] == "BTC"
+        assert result["source"] == "coingecko"
+        assert http.urls[-1].startswith("https://api.coingecko.com/api/v3/coins/bitcoin/ohlc")
+
+    asyncio.run(scenario())
