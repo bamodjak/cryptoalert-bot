@@ -22,7 +22,7 @@
 
 ### Telegram navigation notes
 
-The persistent reply keyboard uses Telegram Bot API button styles (`primary` for market and alert actions, `success` for Premium) and remains visible below the chat composer. Button labels deliberately remain the existing slash commands, so taps reuse the same handlers and access checks as typed commands. Telegram clients control the exact rendering; unsupported clients may display the buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support. The inline dashboard remains available for richer, message-local navigation.
+The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); users do not need to type slash commands. Each label is routed to a real handler, while existing slash commands remain available for compatibility. The compact inline dashboard provides the full feature menu, with administrative controls shown only to configured admins. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
 
 ## Admin tools
 
