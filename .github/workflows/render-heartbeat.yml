@@ -22,7 +22,7 @@ concurrency:
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Check Render application health and retry cold starts
         shell: bash
@@ -30,9 +30,9 @@ jobs:
           SERVICE_URL: https://cryptoalert-bot-i0ev.onrender.com
         run: |
           set -u
-          for attempt in 1 2 3 4; do
-            echo "Health check attempt ${attempt}/4"
-            status="$(curl --silent --show-error --location --max-time 60 \
+          for attempt in {1..18}; do
+            echo "Health check attempt ${attempt}/18"
+            status="$(curl --silent --show-error --location --max-time 20 \
               --output /tmp/render-response.txt --write-out '%{http_code}' \
               "${SERVICE_URL}/health" 2>/tmp/curl-error.txt || true)"
             if [[ "${status}" == "200" ]]; then
@@ -43,7 +43,7 @@ jobs:
             echo "Application health is not ready (status=${status:-none})"
             cat /tmp/render-response.txt 2>/dev/null || true
             cat /tmp/curl-error.txt || true
-            if [[ "${attempt}" -lt 4 ]]; then sleep 5; fi
+            if [[ "${attempt}" -lt 18 ]]; then sleep 5; fi
           done
           echo "Render application health did not recover after retries."
           exit 1
