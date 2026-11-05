@@ -12,6 +12,7 @@ from .users import get_user
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
 from .i18n import tr
+from .keyboards import edit_message_if_changed
 
 router = Router(name="watchlists")
 MAX_WATCHLIST_ITEMS = 10
@@ -77,7 +78,7 @@ async def cb_watchlist(callback: CallbackQuery, session: AsyncSession, prices: P
     user = await get_user(session, callback.from_user)
     text, keyboard = await render_watchlist(session, user, prices)
     if callback.message:
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await edit_message_if_changed(callback.message, text, reply_markup=keyboard)
     await callback.answer()
 
 
@@ -85,8 +86,8 @@ async def cb_watchlist(callback: CallbackQuery, session: AsyncSession, prices: P
 async def cb_watchlist_add(callback: CallbackQuery, session: AsyncSession):
     user = await get_user(session, callback.from_user)
     if callback.message:
-        await callback.message.edit_text(
-            tr(user.language, "watchlist_choose_asset", limit=MAX_WATCHLIST_ITEMS),
+        await edit_message_if_changed(
+            callback.message, tr(user.language, "watchlist_choose_asset", limit=MAX_WATCHLIST_ITEMS),
             reply_markup=asset_picker_keyboard(user.language),
         )
     await callback.answer()
@@ -149,8 +150,8 @@ async def cb_watchlist_view(callback: CallbackQuery, session: AsyncSession, pric
         "change_24h": None,
     }
     if callback.message:
-        await callback.message.edit_text(
-            asset_detail_text(coin, user.language, {"source": "market data", "stale": False}, advanced=user.advanced_mode),
+        await edit_message_if_changed(
+            callback.message, asset_detail_text(coin, user.language, {"source": "market data", "stale": False}, advanced=user.advanced_mode),
             reply_markup=asset_detail_keyboard(row.symbol, user.language, "wl:open"),
         )
     await callback.answer()
