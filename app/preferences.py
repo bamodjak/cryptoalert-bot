@@ -28,7 +28,12 @@ SUPPORTED_TIMEZONES = {
 
 def settings_text(user) -> str:
     advanced = tr(user.language, "settings_enabled") if user.advanced_mode else tr(user.language, "settings_disabled")
-    return tr(user.language, "settings_title", timezone=user.timezone, advanced=advanced)
+    price_alerts = tr(user.language, "settings_on" if user.notify_price_alerts else "settings_off")
+    gas_alerts = tr(user.language, "settings_on" if user.notify_gas_alerts else "settings_off")
+    return tr(
+        user.language, "settings_title", timezone=user.timezone, advanced=advanced,
+        price_alerts=price_alerts, gas_alerts=gas_alerts,
+    )
 
 
 def settings_keyboard(user) -> InlineKeyboardMarkup:
@@ -41,6 +46,16 @@ def settings_keyboard(user) -> InlineKeyboardMarkup:
         for zone, label in SUPPORTED_TIMEZONES.items()
     ]
     rows.extend([timezone_buttons[:2], timezone_buttons[2:4], timezone_buttons[4:]])
+    rows.append([
+        InlineKeyboardButton(
+            text=tr(user.language, "settings_price_toggle", state=tr(user.language, "settings_on" if user.notify_price_alerts else "settings_off")),
+            callback_data="settings:notify:price",
+        ),
+        InlineKeyboardButton(
+            text=tr(user.language, "settings_gas_toggle", state=tr(user.language, "settings_on" if user.notify_gas_alerts else "settings_off")),
+            callback_data="settings:notify:gas",
+        ),
+    ])
     rows.append([InlineKeyboardButton(
         text=tr(user.language, "settings_advanced_toggle"),
         callback_data="settings:advanced",
@@ -77,15 +92,30 @@ async def cb_settings_timezone(callback: CallbackQuery, session: AsyncSession):
     user.timezone = zone
     await session.flush()
     if callback.message:
-        await callback.message.edit_text(settings_text(user), reply_markup=settings_keyboard(user))
+        await _edit_settings(callback.message, user)
     await callback.answer(tr(user.language, "settings_saved"))
 
 
+@router.callback_query(F.data.startswith("settings:notify:"))
+async def cb_settings_notifications(callback: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, callback.from_user)
+    category = (callback.data or "").rsplit(":", 1)[-1]
+    if category == "price":
+        user.notify_price_alerts = not user.notify_price_alerts
+    elif category == "gas":
+        user.notify_gas_alerts = not user.notify_gas_alerts
+    else:
+        await callback.answer(tr(user.language, "settings_invalid_timezone"), show_alert=True)
+        return
+    await session.flush()
+    if callback.message:
+        await _edit_settings(callback.message, user)
+    await callback.answer(tr(user.language, "settings_saved"))
 @router.callback_query(F.data == "settings:advanced")
 async def cb_settings_advanced(callback: CallbackQuery, session: AsyncSession):
     user = await get_user(session, callback.from_user)
     user.advanced_mode = not user.advanced_mode
     await session.flush()
     if callback.message:
-        await callback.message.edit_text(settings_text(user), reply_markup=settings_keyboard(user))
+        await _edit_settings(callback.message, user)
     await callback.answer(tr(user.language, "settings_saved"))
