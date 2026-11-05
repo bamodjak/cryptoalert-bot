@@ -22,7 +22,7 @@ from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
 from .watchlists import router as watchlists_router
-from .live_dashboard import live_dashboard_loop, live_market_stream, router as live_dashboard_router
+from .live_dashboard import live_runtime_loop, router as live_dashboard_router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .admin_management import router as admin_management_router
 from .middlewares import KILL_KEY, CallbackTraceMiddleware, DbSessionMiddleware, KillSwitchMiddleware, MessageTraceMiddleware, ThrottleMiddleware
@@ -293,8 +293,7 @@ async def main() -> None:
     app = build_web_app(redis)
     stop = asyncio.Event()
     worker_task = asyncio.create_task(worker.alert_loop(bot, prices, redis, stop))
-    live_stream_task = asyncio.create_task(live_market_stream(redis, http, stop))
-    live_dashboard_task = asyncio.create_task(live_dashboard_loop(bot, redis, stop))
+    live_runtime_task = asyncio.create_task(live_runtime_loop(bot, redis, http, stop))
     runner = None
     try:
         if settings.webhook_base_url:
@@ -333,12 +332,11 @@ async def main() -> None:
     finally:
         telegram_transport_ready = False
         stop.set()
-        for task in (live_stream_task, live_dashboard_task):
-            try:
-                await asyncio.wait_for(task, timeout=5)
-            except asyncio.TimeoutError:
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+        try:
+            await asyncio.wait_for(live_runtime_task, timeout=5)
+        except asyncio.TimeoutError:
+            live_runtime_task.cancel()
+            await asyncio.gather(live_runtime_task, return_exceptions=True)
         try:
             await asyncio.wait_for(worker_task, timeout=10)
         except asyncio.TimeoutError:
