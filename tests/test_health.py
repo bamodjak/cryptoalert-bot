@@ -29,9 +29,10 @@ def _health_handler(app):
     raise AssertionError("GET /health route was not registered")
 
 
-def _call_health(monkeypatch, redis, last_success, session_factory=FakeSession):
+def _call_health(monkeypatch, redis, last_success, session_factory=FakeSession, transport_ready=True):
     monkeypatch.setattr(main, "Session", session_factory)
     monkeypatch.setattr(main.worker, "last_success", last_success)
+    monkeypatch.setattr(main, "telegram_transport_ready", transport_ready)
 
     async def call():
         app = main.build_web_app(redis)
@@ -47,11 +48,21 @@ def test_health_stays_unavailable_until_alert_worker_succeeds(monkeypatch):
     assert json.loads(response.text) == {"ok": False, "error": "alert worker stale"}
 
 
-def test_health_is_ok_after_a_recent_alert_worker_success(monkeypatch):
-    response = _call_health(monkeypatch, FakeRedis(), time.time())
+def test_health_is_ok_after_telegram_and_alert_worker_are_ready(monkeypatch):
+    response = _call_health(monkeypatch, FakeRedis(), time.time(), transport_ready=True)
 
     assert response.status == 200
     assert json.loads(response.text) == {"ok": True}
+
+
+def test_health_fails_while_telegram_transport_is_not_ready(monkeypatch):
+    response = _call_health(monkeypatch, FakeRedis(), time.time(), transport_ready=False)
+
+    assert response.status == 503
+    assert json.loads(response.text) == {
+        "ok": False,
+        "error": "telegram transport not ready",
+    }
 
 
 def test_health_fails_when_redis_dependency_is_unavailable(monkeypatch):
