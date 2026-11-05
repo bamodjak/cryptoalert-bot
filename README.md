@@ -98,3 +98,5 @@ Database upgrades are additive. The alert snooze and user preference migrations 
 The live trade stream and dashboard updater run under one Redis-elected runtime lease, keeping their in-memory quote state together during overlapping deployments.
 
 Users can independently enable or disable price-alert and gas-alert categories in `/settings`; disabled categories retain their configured alerts. Premium research screens show the rule drivers behind each signal and an in-sample historical directional evaluation with sample counts and explicit fee/slippage limitations.
+
+Operational visibility includes Prometheus counters and gauges for alert delivery, live runtime ownership, Binance stream connectivity/reconnects, trade ingestion and Telegram dashboard edits. `/health` reports service readiness plus live-runtime and stream state.
