@@ -150,7 +150,7 @@ async def cb_watchlist_view(callback: CallbackQuery, session: AsyncSession, pric
     }
     if callback.message:
         await callback.message.edit_text(
-            asset_detail_text(coin, user.language, {"source": "watchlist quote", "stale": False}),
+            asset_detail_text(coin, user.language, {"source": "watchlist quote", "stale": False}, advanced=user.advanced_mode),
             reply_markup=asset_detail_keyboard(row.symbol, user.language, "wl:open"),
         )
     await callback.answer()
