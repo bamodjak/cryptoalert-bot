@@ -20,7 +20,8 @@ from sqlalchemy import func, select, text
 from . import worker
 from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
-from .handlers import admin, router\nfrom .watchlists import router as watchlists_router
+from .handlers import admin, router
+from .watchlists import router as watchlists_router
 from .live_dashboard import live_dashboard_loop, live_market_stream, router as live_dashboard_router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .admin_management import router as admin_management_router
