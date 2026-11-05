@@ -44,6 +44,7 @@ class Alert(Base):
     __table_args__ = (
         Index("ix_alerts_active_kind", "active", "kind"),
         Index("ix_alerts_active_entitlement", "active", "entitlement_paused"),
+        Index("ix_alerts_snoozed_until", "snoozed_until"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
