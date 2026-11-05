@@ -26,6 +26,8 @@ class User(Base):
     language: Mapped[str] = mapped_column(String(2), default="en", server_default="en", nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC", nullable=False)
     advanced_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    notify_price_alerts: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    notify_gas_alerts: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     premium_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
