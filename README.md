@@ -94,3 +94,5 @@ Users can manage their preferred language, timezone and advanced presentation mo
 These features are implemented as a modular monolith. The application keeps one deployment and shared PostgreSQL/Redis infrastructure while separating domain concepts, application services, provider adapters, Telegram routers and background workers. See docs/architecture/blueprint.md for dependency rules and the staged migration plan.
 
 Database upgrades are additive. The alert snooze and user preference migrations preserve existing rows and values.
+
+The live trade stream and dashboard updater run under one Redis-elected runtime lease, keeping their in-memory quote state together during overlapping deployments.
