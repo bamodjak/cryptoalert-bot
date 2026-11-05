@@ -40,6 +40,10 @@ class AlertCustomInput(StatesGroup):
     confirming = State()
 
 
+class AlertEditInput(StatesGroup):
+    waiting = State()
+
+
 router = Router(name="user")
 admin = Router(name="admin")
 admin.message.filter(F.from_user.id.in_(settings.admin_id_set))
@@ -124,8 +128,9 @@ def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> Inli
             else InlineKeyboardButton(text=tr(lang, "alert_snooze_1h"), callback_data=f"alertsnooze:{alert.id}")
         )
         rows.append([
-            InlineKeyboardButton(text=f"#{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}"),
+            InlineKeyboardButton(text=tr(lang, "alert_edit"), callback_data=f"alertedit:{alert.id}"),
             control,
+            InlineKeyboardButton(text=f"✖ #{alert.id}", callback_data=f"alertdel:{alert.id}"),
         ])
     rows.append([InlineKeyboardButton(text=tr(lang, "alert_history"), callback_data="alerts:history")])
     rows.append([
@@ -935,6 +940,58 @@ async def cmd_cancel_alert(m: Message, state: FSMContext, session: AsyncSession)
     await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
+@router.callback_query(F.data.startswith("alertedit:"))
+async def cb_edit_alert(cb: CallbackQuery, session: AsyncSession, state: FSMContext):
+    user = await get_user(session, cb.from_user)
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await cb.answer(tr(user.language, "invalid_option"), show_alert=True)
+        return
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await cb.answer(tr(user.language, "alert_not_found"), show_alert=True)
+        return
+    await state.clear()
+    await state.set_state(AlertEditInput.waiting)
+    await state.update_data(alert_id=alert.id)
+    if cb.message:
+        await cb.message.answer(tr(user.language, "alert_edit_prompt", symbol=alert.symbol or "GAS"))
+    await cb.answer()
+
+
+@router.message(AlertEditInput.waiting, F.text)
+async def receive_alert_edit_value(message: Message, state: FSMContext, session: AsyncSession):
+    user = await get_user(session, message.from_user)
+    raw = (message.text or "").strip()
+    if raw.lower() in {"/cancel", "cancel"}:
+        await state.clear()
+        await message.answer(tr(user.language, "cancelled"), reply_markup=nav_keyboard(user.id, lang=user.language))
+        return
+    data = await state.get_data()
+    try:
+        target = parse_number(raw)
+    except ValueError:
+        await message.answer(tr(user.language, "alert_edit_invalid"))
+        return
+    alert_id = data.get("alert_id")
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await state.clear()
+        await message.answer(tr(user.language, "alert_not_found"), reply_markup=nav_keyboard(user.id, lang=user.language))
+        return
+    alert.target = target
+    await session.flush()
+    await state.clear()
+    formatted = f"{target:g} gwei" if alert.kind == "gas" else fmt_usd(target)
+    await message.answer(
+        tr(user.language, "alert_updated", id=alert.id, target=formatted),
+        reply_markup=nav_keyboard(user.id, lang=user.language),
+    )
 @router.callback_query(F.data.startswith("alertsnooze:"))
 async def cb_snooze_alert(cb: CallbackQuery, session: AsyncSession):
     user = await get_user(session, cb.from_user)
