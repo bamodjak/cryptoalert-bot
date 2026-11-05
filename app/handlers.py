@@ -27,17 +27,14 @@ from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
-from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
+from .parsing import fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
 from .prices import PriceError, PriceService
 from .users import get_user
-from .asset_detail import asset_detail_keyboard, asset_detail_text
-from .advisor import AdvisorUnavailable, build_advisory, format_advisory
 from .keyboards import alerts_keyboard, edit_message_if_changed, nav_keyboard, persistent_menu_keyboard
 from .market_handlers import (
     market_router, cmd_movers, crypto_prices_keyboard, crypto_prices_text,
     market_movers_keyboard, market_movers_text, market_snapshot_text,
 )
-from .market_views import crypto_prices_keyboard, crypto_prices_text, market_movers_keyboard, market_movers_text, market_snapshot_text
 
 class AlertCustomInput(StatesGroup):
     waiting = State()
