@@ -138,6 +138,14 @@ class MessageTraceMiddleware(BaseMiddleware):
             result = await handler(event, data)
         except Exception:
             log.exception("telegram_message failed command=%s chat_type=%s", action, chat_type)
+            if action == "/start":
+                try:
+                    await event.answer(
+                        "Temporary error opening the menu. Please try /start again.\n"
+                        "تعذّر فتح القائمة مؤقتاً. أعد إرسال /start بعد قليل."
+                    )
+                except Exception:
+                    log.exception("telegram_message fallback reply failed command=/start")
             raise
         log.info("telegram_message completed command=%s chat_type=%s", action, chat_type)
         return result
