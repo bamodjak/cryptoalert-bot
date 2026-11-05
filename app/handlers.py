@@ -58,7 +58,10 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "btc_price"), callback_data="dash:price"),
             InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),
         ],
-        [InlineKeyboardButton(text=tr(lang, "market"), callback_data="dash:market")],
+        [
+            InlineKeyboardButton(text=tr(lang, "market"), callback_data="dash:market"),
+            InlineKeyboardButton(text=tr(lang, "movers"), callback_data="dash:movers"),
+        ],
         [
             InlineKeyboardButton(text=tr(lang, "my_alerts"), callback_data="dash:alerts"),
             InlineKeyboardButton(text=tr(lang, "premium"), callback_data="dash:premium"),
@@ -326,6 +329,58 @@ async def cb_market(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
         text = await _market_snapshot(prices, u.language)
     except PriceError:
         text = tr(u.language, "market_snapshot_unavailable")
+    await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+
+
+
+def market_movers_text(snapshot: dict, language: str) -> str:
+    age_seconds = max(0, int(time.time()) - int(snapshot["fetched_at"]))
+    age = tr(language, "market_just_now") if age_seconds < 60 else tr(
+        language, "market_minutes_ago", minutes=max(1, age_seconds // 60)
+    )
+    if snapshot.get("stale"):
+        age += " · " + tr(language, "market_cached")
+
+    def render(items):
+        return "\\n".join(
+            f"<b>{index}.</b> {html.escape(item['name'])} ({html.escape(item['symbol'])}) "
+            f"<b>{item['change_24h']:+.2f}%</b> · {fmt_usd(item['price_usd'])}"
+            for index, item in enumerate(items, 1)
+        )
+
+    return tr(
+        language,
+        "market_movers_snapshot",
+        gainers=render(snapshot["gainers"]),
+        losers=render(snapshot["losers"]),
+        age=age,
+    )
+
+
+async def _market_movers_snapshot(prices: PriceService, language: str) -> str:
+    return market_movers_text(await prices.market_movers(), language)
+
+
+@router.message(Command("movers"))
+async def cmd_movers(m: Message, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, m.from_user)
+    try:
+        text = await _market_movers_snapshot(prices, u.language)
+    except PriceError:
+        text = tr(u.language, "market_movers_unavailable")
+    await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+
+
+@router.callback_query(F.data == "dash:movers")
+async def cb_movers(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, cb.from_user)
+    await cb.answer()
+    if not cb.message:
+        return
+    try:
+        text = await _market_movers_snapshot(prices, u.language)
+    except PriceError:
+        text = tr(u.language, "market_movers_unavailable")
     await cb.message.edit_text(text, reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
