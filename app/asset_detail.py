@@ -5,10 +5,10 @@ import time
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from .i18n import tr
-from .parsing import fmt_usd
+from .parsing import fmt_compact_usd, fmt_usd
 
 
-def asset_detail_text(coin: dict, language: str, payload: dict) -> str:
+def asset_detail_text(coin: dict, language: str, payload: dict, advanced: bool = False) -> str:
     """Render a consistent, escaped asset summary from normalized market data."""
     rank = coin.get("rank")
     rank_text = f"#{rank}" if rank else tr(language, "asset_rank_unavailable")
@@ -24,7 +24,7 @@ def asset_detail_text(coin: dict, language: str, payload: dict) -> str:
         freshness = tr(language, "asset_freshness_unknown")
     if payload.get("stale"):
         freshness += " · " + tr(language, "market_cached")
-    return tr(
+    body = tr(
         language,
         "asset_detail",
         name=html.escape(str(coin.get("name", "Unknown"))),
@@ -35,6 +35,14 @@ def asset_detail_text(coin: dict, language: str, payload: dict) -> str:
         source=html.escape(str(payload.get("source", "market data"))),
         freshness=freshness,
     )
+    if advanced:
+        market_cap = coin.get("market_cap_usd")
+        volume = coin.get("volume_24h_usd")
+        if market_cap:
+            body += "\n" + tr(language, "asset_market_cap", value=fmt_compact_usd(float(market_cap)))
+        if volume:
+            body += "\n" + tr(language, "asset_volume_24h", value=fmt_compact_usd(float(volume)))
+    return body
 
 
 def asset_detail_keyboard(symbol: str, language: str, back_callback: str) -> InlineKeyboardMarkup:
