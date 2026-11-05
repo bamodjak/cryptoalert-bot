@@ -1,7 +1,7 @@
 from functools import cached_property
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     webhook_secret: str = ""
     metrics_token: SecretStr = SecretStr("")  # protect /metrics and /stats.json; disabled when unset
     host: str = "0.0.0.0"
-    port: int = 8080
+    port: int = Field(default=8080, validation_alias=AliasChoices('SERVER_PORT', 'PORT'))
 
     coingecko_api_key: str = ""  # optional free "demo" key raises rate limits
     eth_rpc_url: str = "https://ethereum-rpc.publicnode.com"
