@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.handlers import cmd_movers, market_movers_keyboard, market_movers_text, router as user_router
+from app.market_handlers import market_router
 from app.prices import PriceError, PriceService
 
 
@@ -174,8 +175,9 @@ def test_market_movers_text_is_localized_and_escapes_provider_names():
     assert "بيانات مخزنة" in arabic
 
 
-def test_market_movers_command_is_registered_on_the_user_router():
-    assert any(handler.callback is cmd_movers for handler in user_router.message.handlers)
+def test_market_movers_command_is_registered_on_the_market_feature_router():
+    assert market_router in user_router.sub_routers
+    assert any(handler.callback is cmd_movers for handler in market_router.message.handlers)
 
 
 def test_market_movers_falls_back_to_coinpaprika_tickers():
