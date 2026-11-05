@@ -93,16 +93,29 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
 
 
 def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
-    """A compact Telegram reply keyboard that remains visible below the chat composer."""
+    """Color-coded, persistent navigation using native Telegram reply-keyboard controls.
+
+    Keep button text as existing bot commands so every tap follows the same
+    authenticated, rate-limited command path as a manually typed command.
+    """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="/start"), KeyboardButton(text="/market"), KeyboardButton(text="/movers")],
-            [KeyboardButton(text="/price btc"), KeyboardButton(text="/alerts"), KeyboardButton(text="/premium")],
-            [KeyboardButton(text="/help")],
+            [
+                KeyboardButton(text="/market", style="primary"),
+                KeyboardButton(text="/movers", style="primary"),
+            ],
+            [
+                KeyboardButton(text="/price btc", style="primary"),
+                KeyboardButton(text="/alerts", style="primary"),
+            ],
+            [
+                KeyboardButton(text="/premium", style="success"),
+                KeyboardButton(text="/help"),
+            ],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Open Orbsat quick actions…",
+        input_field_placeholder="Orbsat · Markets, alerts and Premium",
     )
 
 
