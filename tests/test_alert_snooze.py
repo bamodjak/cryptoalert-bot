@@ -8,6 +8,7 @@ from app.db import utcnow
 
 def test_alert_snooze_is_nullable_and_keyboard_exposes_pause_action():
     assert Alert.__table__.c.snoozed_until.nullable is True
+    assert "ix_alerts_snoozed_until" in {index.name for index in Alert.__table__.indexes}
     alert = SimpleNamespace(id=12, symbol="BTC", snoozed_until=None)
     keyboard = alerts_keyboard([alert], user_id=1, lang="en")
     callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
