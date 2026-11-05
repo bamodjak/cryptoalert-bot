@@ -161,3 +161,48 @@ def test_advisor_falls_back_to_coingecko_when_binance_is_blocked():
         assert http.urls[-1].startswith("https://api.coingecko.com/api/v3/coins/bitcoin/ohlc")
 
     asyncio.run(scenario())
+
+
+
+def test_advisor_uses_kraken_ohlc_when_binance_is_blocked():
+    class Response:
+        def __init__(self, payload, status=0):
+            self.payload = payload
+            self.status = status
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        def raise_for_status(self):
+            if self.status:
+                raise aiohttp.ClientResponseError(None, (), status=self.status)
+
+        async def json(self):
+            return self.payload
+
+    class Http:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **kwargs):
+            self.urls.append(url)
+            if "api.kraken.com" in url:
+                candles = [
+                    [row[0] / 1000, row[1], row[2], row[3], row[4], row[4], row[5], 100]
+                    for row in _candles(1.003)
+                ]
+                return Response({"error": [], "result": {"XXBTZUSD": candles, "last": 0}})
+            return Response({}, status=418)
+
+    async def scenario():
+        http = Http()
+        result = await _fetch_one(http, "BTCUSDT")
+        assert result is not None
+        assert result["symbol"] == "BTC"
+        assert result["source"] == "kraken"
+        assert any("api.kraken.com/0/public/OHLC" in url for url in http.urls)
+
+    asyncio.run(scenario())
