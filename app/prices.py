@@ -408,7 +408,7 @@ class PriceService:
                         change = float(quote.get("percent_change_24h") or 0)
                         coin_id = str(row["id"])
                     else:
-                        rank = len(coins) + 1
+                        rank = int(row.get("market_cap_rank") or (len(coins) + 1))
                         price = float(row["current_price"])
                         change = float(row.get("price_change_percentage_24h") or 0)
                         coin_id = str(row["id"])
