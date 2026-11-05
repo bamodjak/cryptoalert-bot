@@ -4,10 +4,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import AnswerCallbackQuery
 from app import handlers, main
 from app.handlers import cmd_start, router as user_router
 from app.i18n import welcome_text
-from app.middlewares import MessageTraceMiddleware, safe_message_action
+from app.middlewares import CallbackTraceMiddleware, MessageTraceMiddleware, safe_message_action
 
 
 def test_safe_message_action_logs_only_command_name():
@@ -88,3 +90,30 @@ def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
     args, kwargs = message.answer.await_args
     assert args[0] == welcome_text("en")
     assert kwargs["reply_markup"] is not None
+
+
+
+def test_expired_callback_gets_a_fresh_menu_hint(caplog):
+    event = SimpleNamespace(
+        id="expired-callback",
+        data="dash:market",
+        message=SimpleNamespace(answer=AsyncMock()),
+    )
+    error = TelegramBadRequest(
+        method=AnswerCallbackQuery(callback_query_id="expired-callback"),
+        message="query is too old and response timeout expired",
+    )
+
+    async def handler(received_event, data):
+        raise error
+
+    async def run():
+        return await CallbackTraceMiddleware()(handler, event, {})
+
+    with caplog.at_level(logging.INFO, logger="app.middlewares"):
+        result = asyncio.run(run())
+
+    assert result is None
+    assert "telegram_callback expired" in caplog.text
+    event.message.answer.assert_awaited_once()
+    assert "/start" in event.message.answer.await_args.args[0]

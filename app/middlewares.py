@@ -2,6 +2,7 @@ import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 from redis.asyncio import Redis
 
@@ -40,6 +41,20 @@ class CallbackTraceMiddleware(BaseMiddleware):
         log.info("telegram_callback received id=%s action=%s", callback_id, action)
         try:
             result = await handler(event, data)
+        except TelegramBadRequest as exc:
+            if "query is too old" in str(exc).lower():
+                log.warning("telegram_callback expired id=%s action=%s", callback_id, action)
+                if event.message:
+                    try:
+                        await event.message.answer(
+                            "That button expired. Open /start for a fresh menu.\\n"
+                            "انتهت صلاحية هذا الزر. أرسل /start لفتح قائمة جديدة."
+                        )
+                    except Exception:
+                        log.exception("telegram_callback expiry notice failed action=%s", action)
+                return None
+            log.exception("telegram_callback failed id=%s action=%s", callback_id, action)
+            raise
         except Exception:
             log.exception("telegram_callback failed id=%s action=%s", callback_id, action)
             raise
