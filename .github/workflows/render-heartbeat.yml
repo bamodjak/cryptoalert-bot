@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: render-free-service-heartbeat
+  group: render-free-service-heartbeat-${{ github.event_name }}
   # A cold-start check may take longer than the five-minute schedule interval.
   # Do not cancel the active recovery attempt when the next scheduled run queues.
   cancel-in-progress: false
