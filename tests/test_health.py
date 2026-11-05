@@ -162,5 +162,23 @@ def test_docker_healthcheck_uses_render_runtime_port():
     dockerfile = Path(__file__).parents[1] / "Dockerfile"
     content = dockerfile.read_text()
 
-    assert "os.getenv('PORT', '8080')" in content
+    assert "os.getenv('SERVER_PORT', os.getenv('PORT', '8080'))" in content
     assert "127.0.0.1:8080/health" not in content
+
+
+def test_server_port_environment_variable_is_supported(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv("SERVER_PORT", "8123")
+    monkeypatch.setenv("PORT", "8124")
+
+    assert Settings(_env_file=None).port == 8123
+
+
+def test_render_port_environment_variable_remains_supported(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.delenv("SERVER_PORT", raising=False)
+    monkeypatch.setenv("PORT", "8124")
+
+    assert Settings(_env_file=None).port == 8124
