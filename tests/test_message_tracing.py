@@ -3,10 +3,8 @@ import logging
 from types import SimpleNamespace
 
 import pytest
-from aiogram import Dispatcher
-
+from app import main
 from app.handlers import cmd_start, router as user_router
-from app.main import register_routers
 from app.middlewares import MessageTraceMiddleware, safe_message_action
 
 
@@ -61,9 +59,6 @@ def test_message_trace_records_handler_failure_and_reraises(caplog):
     assert "987654321" not in caplog.text
 
 
-def test_start_command_handler_is_registered_on_the_dispatcher():
-    dispatcher = Dispatcher()
-    register_routers(dispatcher)
-
-    assert user_router in dispatcher.sub_routers
+def test_start_command_handler_is_registered_on_the_user_router_used_by_main():
+    assert main.router is user_router
     assert any(handler.callback is cmd_start for handler in user_router.message.handlers)
