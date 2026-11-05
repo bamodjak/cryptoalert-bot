@@ -89,7 +89,7 @@ Keep `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` identical.
 
 Orbsat uses a canonical core asset registry shared by the price service, watchlists, live dashboard and quantitative research universe. Top-33 and market-mover assets open a common detail view with contextual actions to create alerts, add to a watchlist and open research where available.
 
-Users can manage their preferred language, timezone and advanced presentation mode from /settings. Advanced mode reveals additional market-cap and 24-hour volume context when the provider supplies it. Alert management supports one-hour snoozing, resuming and a recent triggered-alert history via /history.
+Users can manage their preferred language, timezone and advanced presentation mode from /settings. Advanced mode reveals additional market-cap and 24-hour volume context when the provider supplies it. Alert management supports editing targets, one-hour snoozing, resuming and a recent triggered-alert history via /history.
 
 These features are implemented as a modular monolith. The application keeps one deployment and shared PostgreSQL/Redis infrastructure while separating domain concepts, application services, provider adapters, Telegram routers and background workers. See docs/architecture/blueprint.md for dependency rules and the staged migration plan.
 
