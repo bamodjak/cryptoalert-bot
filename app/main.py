@@ -131,10 +131,10 @@ def build_web_app(redis: Redis) -> web.Application:
 
 
 POLLING_LOCK_KEY = "bot:telegram-poller"
-POLLING_LOCK_TTL_SECONDS = 90
+POLLING_LOCK_TTL_SECONDS = 45
 POLLING_STARTUP_GRACE_SECONDS = 10
-POLLING_LOCK_RETRY_SECONDS = 2
-POLLING_LOCK_RENEW_SECONDS = 25
+POLLING_LOCK_RETRY_SECONDS = 1
+POLLING_LOCK_RENEW_SECONDS = 10
 
 
 async def _renew_polling_lock(lock, dispatcher: Dispatcher, stop: asyncio.Event) -> None:
