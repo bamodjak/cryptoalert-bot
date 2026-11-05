@@ -28,8 +28,9 @@ from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
-from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
+from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
 from .prices import PriceError, PriceService
+from .users import get_user
 from .advisor import AdvisorUnavailable, build_advisory, format_advisory
 
 class AlertCustomInput(StatesGroup):
@@ -118,63 +119,6 @@ def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> Inli
         InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-async def get_user(
-    session: AsyncSession, tg_user, start_args: str | None = None
-) -> User:
-    u = await session.get(User, tg_user.id)
-
-    if u is None:
-        ref_id = parse_referral(start_args, tg_user.id)
-
-        if ref_id:
-            referrer = await session.get(User, ref_id)
-            if not referrer:
-                ref_id = None
-
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-        from sqlalchemy import update
-
-        stmt = (
-            pg_insert(User)
-            .values(
-                id=tg_user.id,
-                username=tg_user.username,
-                first_name=tg_user.first_name,
-                last_name=tg_user.last_name,
-                language="ar" if (getattr(tg_user, "language_code", None) or "").lower().startswith("ar") else "en",
-                referred_by=ref_id,
-                affiliation_shares=0,
-                referrals_count=0,
-            )
-            .on_conflict_do_nothing(index_elements=["id"])
-            .returning(User.id)
-        )
-        inserted_id = await session.scalar(stmt)
-
-        if inserted_id is not None and ref_id is not None:
-            await session.execute(
-                update(User)
-                .where(User.id == ref_id)
-                .values(
-                    referrals_count=func.coalesce(
-                        User.referrals_count, 0
-                    ) + 1
-                )
-            )
-
-        u = await session.get(User, tg_user.id)
-
-    if u is None:
-        raise RuntimeError("Could not load or create Telegram user")
-
-    u.blocked = False
-    u.username = tg_user.username
-    u.first_name = tg_user.first_name
-    u.last_name = tg_user.last_name
-    await session.flush()
-    return u
 
 
 async def active_count(session: AsyncSession, user_id: int) -> int:
