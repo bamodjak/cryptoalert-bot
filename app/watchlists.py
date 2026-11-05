@@ -6,10 +6,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import User, Watchlist
-from .assets import CORE_ASSETS
+from .assets import CORE_ASSETS, get_asset
+from .asset_detail import asset_detail_keyboard, asset_detail_text
 from .users import get_user
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
+from .i18n import tr
 
 router = Router(name="watchlists")
 MAX_WATCHLIST_ITEMS = 10
@@ -22,7 +24,10 @@ def _label(language: str, english: str, arabic: str) -> str:
 
 def watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKeyboardMarkup:
     buttons = [
-        [InlineKeyboardButton(text=f"✖ {row.symbol.upper()}", callback_data=f"wl:del:{row.id}")]
+        [
+            InlineKeyboardButton(text=row.symbol.upper(), callback_data=f"wl:view:{row.id}"),
+            InlineKeyboardButton(text="✖", callback_data=f"wl:del:{row.id}"),
+        ]
         for row in rows
     ]
     buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add asset", "＋ إضافة أصل"), callback_data="wl:add")])
@@ -44,19 +49,19 @@ async def render_watchlist(session: AsyncSession, user: User, prices: PriceServi
         select(Watchlist).where(Watchlist.user_id == user.id).order_by(Watchlist.created_at, Watchlist.id)
     )).all())
     if not rows:
-        body = "⭐ <b>Your watchlist is empty</b>\nAdd assets to keep their latest prices together."
+        body = tr(user.language, "watchlist_empty")
     else:
         try:
             quotes = await prices.prices([row.coin_id for row in rows], allow_stale=True)
         except PriceError:
             quotes = {}
-        lines = [_label(user.language, "⭐ <b>Your watchlist</b>", "⭐ <b>قائمة المتابعة</b>")]
+        lines = [tr(user.language, "watchlist_header")]
         for row in rows:
             value = quotes.get(row.coin_id)
-            price = fmt_usd(value) if value is not None else _label(user.language, "Quote unavailable", "السعر غير متاح")
+            price = fmt_usd(value) if value is not None else tr(user.language, "watchlist_quote_unavailable")
             lines.append(f"• <b>{row.symbol.upper()}</b> — {price}")
         body = "\n".join(lines)
-    body += f"\n\n{len(rows)}/{MAX_WATCHLIST_ITEMS} assets"
+    body += "\n\n" + tr(user.language, "watchlist_count", count=len(rows), limit=MAX_WATCHLIST_ITEMS)
     return body, watchlist_keyboard(rows, user.language)
 
 
@@ -77,11 +82,12 @@ async def cb_watchlist(callback: CallbackQuery, session: AsyncSession, prices: P
 
 
 @router.callback_query(F.data == "wl:add")
-async def cb_watchlist_add(callback: CallbackQuery):
+async def cb_watchlist_add(callback: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, callback.from_user)
     if callback.message:
         await callback.message.edit_text(
-            "Choose an asset to add. Your watchlist supports up to 10 assets.",
-            reply_markup=asset_picker_keyboard(),
+            tr(user.language, "watchlist_choose_asset", limit=MAX_WATCHLIST_ITEMS),
+            reply_markup=asset_picker_keyboard(user.language),
         )
     await callback.answer()
 
@@ -90,21 +96,19 @@ async def cb_watchlist_add(callback: CallbackQuery):
 async def cb_watchlist_add_asset(callback: CallbackQuery, session: AsyncSession, prices: PriceService):
     user = await get_user(session, callback.from_user)
     symbol = (callback.data or "").rsplit(":", 1)[-1].lower()
-    if symbol not in {item[0] for item in SUPPORTED}:
-        await callback.answer("Unsupported asset.", show_alert=True)
-        return
     coin = await prices.resolve(symbol)
     if coin is None:
-        await callback.answer("Asset could not be resolved. Try again later.", show_alert=True)
+        user = await get_user(session, callback.from_user)
+        await callback.answer(tr(user.language, "watchlist_unsupported"), show_alert=True)
         return
     # Serialize concurrent additions for this account before enforcing its cap.
     await session.scalar(select(User).where(User.id == user.id).with_for_update())
     rows = list((await session.scalars(select(Watchlist).where(Watchlist.user_id == user.id))).all())
     if any(row.coin_id == coin.id for row in rows):
-        await callback.answer(f"{symbol.upper()} is already in your watchlist.", show_alert=True)
+        await callback.answer(tr(user.language, "watchlist_duplicate", symbol=symbol.upper()), show_alert=True)
         return
     if len(rows) >= MAX_WATCHLIST_ITEMS:
-        await callback.answer(f"Watchlist limit is {MAX_WATCHLIST_ITEMS} assets.", show_alert=True)
+        await callback.answer(tr(user.language, "watchlist_limit", limit=MAX_WATCHLIST_ITEMS), show_alert=True)
         return
     await session.execute(
         pg_insert(Watchlist)
@@ -115,26 +119,58 @@ async def cb_watchlist_add_asset(callback: CallbackQuery, session: AsyncSession,
     text, keyboard = await render_watchlist(session, user, prices)
     if callback.message:
         await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer(f"Added {symbol.upper()}.")
+    await callback.answer(tr(user.language, "watchlist_added", symbol=symbol.upper()))
 
 
+@router.callback_query(F.data.startswith("wl:view:"))
+async def cb_watchlist_view(callback: CallbackQuery, session: AsyncSession, prices: PriceService):
+    user = await get_user(session, callback.from_user)
+    try:
+        row_id = int((callback.data or "").rsplit(":", 1)[-1])
+    except ValueError:
+        await callback.answer(tr(user.language, "watchlist_item_invalid"), show_alert=True)
+        return
+    row = await session.scalar(
+        select(Watchlist).where(Watchlist.id == row_id, Watchlist.user_id == user.id)
+    )
+    if row is None:
+        await callback.answer(tr(user.language, "watchlist_item_removed"), show_alert=True)
+        return
+    try:
+        quote = (await prices.prices([row.coin_id], allow_stale=True)).get(row.coin_id)
+    except PriceError:
+        quote = None
+    asset = get_asset(row.coin_id)
+    coin = {
+        "name": asset.name if asset else row.symbol.upper(),
+        "symbol": row.symbol,
+        "price_usd": quote,
+        "rank": None,
+        "change_24h": None,
+    }
+    if callback.message:
+        await callback.message.edit_text(
+            asset_detail_text(coin, user.language, {"source": "watchlist quote", "stale": False}),
+            reply_markup=asset_detail_keyboard(row.symbol, user.language, "wl:open"),
+        )
+    await callback.answer()
 @router.callback_query(F.data.startswith("wl:del:"))
 async def cb_watchlist_remove(callback: CallbackQuery, session: AsyncSession, prices: PriceService):
     user = await get_user(session, callback.from_user)
     try:
         row_id = int((callback.data or "").rsplit(":", 1)[-1])
     except ValueError:
-        await callback.answer("Invalid watchlist item.", show_alert=True)
+        await callback.answer(tr(user.language, "watchlist_item_invalid"), show_alert=True)
         return
     row = await session.scalar(
         select(Watchlist).where(Watchlist.id == row_id, Watchlist.user_id == user.id)
     )
     if row is None:
-        await callback.answer("That item is already removed.", show_alert=True)
+        await callback.answer(tr(user.language, "watchlist_item_removed"), show_alert=True)
         return
     await session.delete(row)
     await session.flush()
     text, keyboard = await render_watchlist(session, user, prices)
     if callback.message:
         await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer(f"Removed {row.symbol.upper()}.")
+    await callback.answer(tr(user.language, "watchlist_removed", symbol=row.symbol.upper()))
