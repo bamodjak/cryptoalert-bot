@@ -6,7 +6,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from redis.asyncio import Redis
 from redis.exceptions import LockNotOwnedError
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from . import metrics
 from .config import settings
@@ -60,15 +60,19 @@ def _alert_message(kind: str, symbol: str | None, value: float, target: float, a
 async def check_once(bot: Bot, prices: PriceService) -> None:
     global last_success
     async with Session() as s:
+        now = utcnow()
         rows = (await s.execute(
             select(Alert, User.language, User.premium_until, User.id)
             .join(User, User.id == Alert.user_id)
-            .where(Alert.active.is_(True), User.suspended.is_(False))
+            .where(
+                Alert.active.is_(True),
+                User.suspended.is_(False),
+                or_(Alert.snoozed_until.is_(None), Alert.snoozed_until <= now),
+            )
             .order_by(Alert.user_id, Alert.created_at, Alert.id)
         )).all()
         # Preserve alert configurations after Premium expiry, but pause gas alerts and
         # price alerts beyond the Free-plan allowance. Renewal automatically unpauses them.
-        now = utcnow()
         price_counts: dict[int, int] = {}
         premium_counts: dict[int, int] = {}
         eligible_rows = []
