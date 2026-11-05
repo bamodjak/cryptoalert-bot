@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import User, Watchlist
-from .handlers import get_user, nav_keyboard
+from .handlers import get_user
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
 
