@@ -19,7 +19,7 @@ TEXT = {
         "market_minutes_ago": "{minutes} min ago",
         "market_cached": "cached data",
         "movers": "🚀 Top Movers",
-        "market_movers_snapshot": "🚀 <b>24-hour market movers</b>\\nTop gainers\\n{gainers}\\n\\nTop losers\\n{losers}\\n\\n< i>Universe: top 100 assets by market cap · minimum $10M market cap</i>\\nUpdated: {age}\\n<i>Market data only; not a trading recommendation.</i>",
+        "market_movers_snapshot": "🚀 <b>24-hour market movers</b>\\nTop gainers\\n{gainers}\\n\\nTop losers\\n{losers}\\n\\n<i>Universe: top 100 assets by market cap · minimum $10M market cap</i>\\nUpdated: {age}\\n<i>Market data only; not a trading recommendation.</i>",
         "market_movers_unavailable": "Market movers are temporarily unavailable. Please try again shortly.",
         "my_alerts": "🔔 My Alerts",
         "premium": "⭐ Premium",
