@@ -21,6 +21,10 @@ def test_advisor_uses_history_and_returns_bounded_risk_levels():
     assert result["score"] <= 6
     assert result["score"] >= -6
     assert result["atr_pct"] > 0
+    assert result["reasons"]
+    assert result["history"] is not None
+    assert result["history"]["samples"] > 0
+    assert result["history"]["horizon_hours"] == 24
     assert result["stance"] in {"BULLISH SETUP", "BEARISH / AVOID LONGS", "NEUTRAL · WAIT"}
     if result["score"] >= 3:
         assert result["invalidation"] < result["price"] < result["objective"]
@@ -33,3 +37,8 @@ def test_advisor_report_discloses_heuristic_and_risk():
     assert "NOT probabilities" in report
     assert "Not individualized financial advice" in report
     assert "volatility" in report
+    assert "Why:" in report
+    assert "Historical 24h:" in report
+    arabic_report = format_advisory([row], "ar")
+    assert "الأسباب:" in arabic_report
+    assert "تقييم تاريخي" in arabic_report
