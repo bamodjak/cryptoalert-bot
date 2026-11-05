@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from app.db import User
 from app.preferences import SUPPORTED_TIMEZONES, settings_keyboard, settings_text
 
 
@@ -21,3 +22,10 @@ def test_settings_screen_is_available_in_arabic():
     user = SimpleNamespace(language="ar", timezone="UTC", advanced_mode=True, notify_price_alerts=True, notify_gas_alerts=True)
     assert "الإعدادات الشخصية" in settings_text(user)
     assert "تنبيهات الأسعار" in settings_text(user)
+
+
+def test_notification_categories_default_to_enabled_for_existing_users():
+    assert User.__table__.c.notify_price_alerts.default.arg is True
+    assert User.__table__.c.notify_gas_alerts.default.arg is True
+    assert User.__table__.c.notify_price_alerts.nullable is False
+    assert User.__table__.c.notify_gas_alerts.nullable is False
