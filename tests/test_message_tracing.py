@@ -72,8 +72,7 @@ def test_start_command_handler_is_registered_on_the_user_router_used_by_main():
     assert any(handler.callback is cmd_start for handler in user_router.message.handlers)
 
 
-
-def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
+def test_start_handler_sends_welcome_and_inline_home_keyboard(monkeypatch):
     user = SimpleNamespace(id=12345, language="en")
     get_user = AsyncMock(return_value=user)
     monkeypatch.setattr(handlers, "get_user", get_user)
@@ -93,9 +92,9 @@ def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
     assert welcome_args[0] == welcome_text("en")
     assert welcome_kwargs["reply_markup"] is not None
     menu_args, menu_kwargs = message.answer.await_args_list[1]
-    assert "Quick actions" in menu_args[0]
-    assert menu_kwargs["reply_markup"].is_persistent is True
-
+    assert menu_args[0] == "Choose an action:"
+    assert menu_kwargs["reply_markup"].inline_keyboard
+    assert not hasattr(menu_kwargs["reply_markup"], "keyboard")
 
 
 def test_expired_callback_gets_a_fresh_menu_hint(caplog):
@@ -144,7 +143,6 @@ def test_message_trace_does_not_log_skip_handler_as_failure(caplog):
     assert "telegram_message received command=/start" in caplog.text
     assert "telegram_message failed" not in caplog.text
     assert "987654321" not in caplog.text
-
 
 
 def test_noop_telegram_message_edit_is_ignored():
