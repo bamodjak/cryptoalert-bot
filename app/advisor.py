@@ -213,18 +213,38 @@ def _analyse_klines(symbol: str, rows: list[list]) -> dict:
 
 
 async def _fetch_one(http: aiohttp.ClientSession, symbol: str) -> dict | None:
-    try:
-        async with http.get(
-            "https://api.binance.com/api/v3/klines",
-            params={"symbol": symbol, "interval": "4h", "limit": 120},
-            timeout=aiohttp.ClientTimeout(total=12),
-        ) as response:
-            response.raise_for_status()
-            rows = await response.json()
-        return _analyse_klines(symbol.removesuffix("USDT"), rows)
-    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, KeyError) as exc:
-        log.warning("Advisor history unavailable for %s: %s", symbol, type(exc).__name__)
-        return None
+    """Fetch candles from Binance's market-data-only host, then regional REST mirrors.
+
+    Render regions can receive HTTP 451/403 from the general Binance API. The
+    documented data-api host serves the same public klines without authentication.
+    """
+    bases = (
+        "https://data-api.binance.vision",
+        "https://api.binance.com",
+        "https://api1.binance.com",
+        "https://api-gcp.binance.com",
+    )
+    last_error: Exception | None = None
+    for base in bases:
+        try:
+            async with http.get(
+                f"{base}/api/v3/klines",
+                params={"symbol": symbol, "interval": "4h", "limit": 120},
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as response:
+                response.raise_for_status()
+                rows = await response.json()
+            return _analyse_klines(symbol.removesuffix("USDT"), rows)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, KeyError) as exc:
+            last_error = exc
+            status = getattr(exc, "status", None)
+            log.warning(
+                "Advisor candle provider failed symbol=%s host=%s status=%s error=%s",
+                symbol, base.split("//", 1)[-1], status or "-", type(exc).__name__,
+            )
+    log.error("Advisor history unavailable for %s after %d provider attempts: %s",
+              symbol, len(bases), type(last_error).__name__ if last_error else "unknown")
+    return None
 
 
 async def build_advisory(http: aiohttp.ClientSession, redis: Redis) -> list[dict]:
