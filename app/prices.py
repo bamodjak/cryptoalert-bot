@@ -11,38 +11,16 @@ from redis.asyncio import Redis
 
 from . import metrics
 from .config import settings
+from .assets import CORE_ASSETS
 
 log = logging.getLogger(__name__)
 
 
-# CoinPaprika identifiers for coins supported by the bot. This provider is used
-# only when CoinGecko is rate-limited or unavailable.
-PAPRIKA_IDS = {
-    "bitcoin": "btc-bitcoin",
-    "ethereum": "eth-ethereum",
-    "solana": "sol-solana",
-    "binancecoin": "bnb-binance-coin",
-    "ripple": "xrp-xrp",
-    "cardano": "ada-cardano",
-    "dogecoin": "doge-dogecoin",
-    "the-open-network": "ton-toncoin",
-    "tron": "trx-tron",
-    "avalanche-2": "avax-avalanche",
-    "polkadot": "dot-polkadot",
-    "chainlink": "link-chainlink",
-    "litecoin": "ltc-litecoin",
-    "tether": "usdt-tether",
-    "usd-coin": "usdc-usd-coin",
-}
-
+# Compatibility mappings derived from the canonical asset registry.
+PAPRIKA_IDS = {asset.coin_id: asset.paprika_id for asset in CORE_ASSETS}
 KNOWN = {
-    "btc": ("bitcoin", "Bitcoin"), "eth": ("ethereum", "Ethereum"), "sol": ("solana", "Solana"),
-    "bnb": ("binancecoin", "BNB"), "xrp": ("ripple", "XRP"), "ada": ("cardano", "Cardano"),
-    "doge": ("dogecoin", "Dogecoin"), "ton": ("the-open-network", "Toncoin"), "trx": ("tron", "TRON"),
-    "avax": ("avalanche-2", "Avalanche"), "dot": ("polkadot", "Polkadot"), "link": ("chainlink", "Chainlink"),
-    "ltc": ("litecoin", "Litecoin"), "usdt": ("tether", "Tether"), "usdc": ("usd-coin", "USDC"),
+    asset.symbol: (asset.coin_id, asset.name) for asset in CORE_ASSETS
 }
-
 
 class PriceError(Exception):
     pass
@@ -181,7 +159,7 @@ class PriceService:
             if "usd" not in value:
                 continue
             price = float(value["usd"])
-            if price <= 0:
+            if not math.isfinite(price) or price <= 0:
                 continue
             out[cid] = price
             pipe.set(f"cg:px:{cid}", price, ex=max(10, settings.check_interval - 5))
@@ -406,11 +384,15 @@ class PriceService:
                         rank = int(row.get("rank") or 0)
                         price = float(quote["price"])
                         change = float(quote.get("percent_change_24h") or 0)
+                        market_cap = float(quote.get("market_cap") or 0)
+                        volume_24h = float(quote.get("volume_24h") or 0)
                         coin_id = str(row["id"])
                     else:
                         rank = int(row.get("market_cap_rank") or (len(coins) + 1))
                         price = float(row["current_price"])
                         change = float(row.get("price_change_percentage_24h") or 0)
+                        market_cap = float(row.get("market_cap") or 0)
+                        volume_24h = float(row.get("total_volume") or 0)
                         coin_id = str(row["id"])
                     symbol = str(row["symbol"]).strip().upper()
                     name = str(row["name"]).strip()
@@ -421,6 +403,8 @@ class PriceService:
                     coins.append({
                         "rank": rank, "id": coin_id, "symbol": symbol[:12],
                         "name": name[:48], "price_usd": price, "change_24h": change,
+                        "market_cap_usd": market_cap if market_cap > 0 else None,
+                        "volume_24h_usd": volume_24h if volume_24h > 0 else None,
                     })
                 except (KeyError, TypeError, ValueError):
                     continue

@@ -2,6 +2,7 @@ import html
 import time
 from datetime import timedelta
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -28,13 +29,19 @@ from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
 from .entitlements import refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
-from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage, parse_referral
+from .parsing import fmt_compact_usd, fmt_gwei, fmt_usd, parse_alert, parse_number, parse_percentage
 from .prices import PriceError, PriceService
+from .users import get_user
+from .asset_detail import asset_detail_keyboard, asset_detail_text
 from .advisor import AdvisorUnavailable, build_advisory, format_advisory
 
 class AlertCustomInput(StatesGroup):
     waiting = State()
     confirming = State()
+
+
+class AlertEditInput(StatesGroup):
+    waiting = State()
 
 
 router = Router(name="user")
@@ -66,7 +73,10 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "referrals"), callback_data="nav:share"),
             InlineKeyboardButton(text=tr(lang, "help"), callback_data="nav:help"),
         ],
-        [InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")],
+        [
+            InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose"),
+            InlineKeyboardButton(text=tr(lang, "settings"), callback_data="settings:open"),
+        ],
     ]
     if user_id in settings.admin_id_set:
         rows.append([InlineKeyboardButton(text="🛡 Admin Panel", callback_data="admin:panel")])
@@ -75,22 +85,22 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Short, human-readable quick navigation; labels route to real bot actions."""
+def persistent_menu_keyboard(language: str = "en") -> ReplyKeyboardMarkup:
+    """Short, localized quick navigation; labels route to real bot actions."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="🏠 Dashboard", style="primary"),
-                KeyboardButton(text="📊 Markets", style="primary"),
+                KeyboardButton(text=tr(language, "quick_dashboard"), style="primary"),
+                KeyboardButton(text=tr(language, "quick_markets"), style="primary"),
             ],
             [
-                KeyboardButton(text="🔔 Alerts"),
-                KeyboardButton(text="⭐ Premium", style="success"),
+                KeyboardButton(text=tr(language, "quick_alerts")),
+                KeyboardButton(text=tr(language, "quick_premium"), style="success"),
             ],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Orbsat · Dashboard, markets and alerts",
+        input_field_placeholder="Orbsat · Dashboard, markets and alerts" if language != "ar" else "Orbsat · السوق والتنبيهات",
     )
 
 
@@ -109,72 +119,25 @@ async def edit_message_if_changed(
 
 
 def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"🗑 #{alert.id} · {alert.symbol}", callback_data=f"alertdel:{alert.id}")]
-        for alert in alerts[:20]
-    ]
+    rows = []
+    now = utcnow()
+    for alert in alerts[:20]:
+        control = (
+            InlineKeyboardButton(text=tr(lang, "alert_resume"), callback_data=f"alertresume:{alert.id}")
+            if alert.snoozed_until and alert.snoozed_until > now
+            else InlineKeyboardButton(text=tr(lang, "alert_snooze_1h"), callback_data=f"alertsnooze:{alert.id}")
+        )
+        rows.append([
+            InlineKeyboardButton(text=tr(lang, "alert_edit"), callback_data=f"alertedit:{alert.id}"),
+            control,
+            InlineKeyboardButton(text=f"✖ #{alert.id}", callback_data=f"alertdel:{alert.id}"),
+        ])
+    rows.append([InlineKeyboardButton(text=tr(lang, "alert_history"), callback_data="alerts:history")])
     rows.append([
         InlineKeyboardButton(text=tr(lang, "home_create"), callback_data="create:open"),
         InlineKeyboardButton(text=tr(lang, "home"), callback_data="nav:home"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-async def get_user(
-    session: AsyncSession, tg_user, start_args: str | None = None
-) -> User:
-    u = await session.get(User, tg_user.id)
-
-    if u is None:
-        ref_id = parse_referral(start_args, tg_user.id)
-
-        if ref_id:
-            referrer = await session.get(User, ref_id)
-            if not referrer:
-                ref_id = None
-
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-        from sqlalchemy import update
-
-        stmt = (
-            pg_insert(User)
-            .values(
-                id=tg_user.id,
-                username=tg_user.username,
-                first_name=tg_user.first_name,
-                last_name=tg_user.last_name,
-                language="ar" if (getattr(tg_user, "language_code", None) or "").lower().startswith("ar") else "en",
-                referred_by=ref_id,
-                affiliation_shares=0,
-                referrals_count=0,
-            )
-            .on_conflict_do_nothing(index_elements=["id"])
-            .returning(User.id)
-        )
-        inserted_id = await session.scalar(stmt)
-
-        if inserted_id is not None and ref_id is not None:
-            await session.execute(
-                update(User)
-                .where(User.id == ref_id)
-                .values(
-                    referrals_count=func.coalesce(
-                        User.referrals_count, 0
-                    ) + 1
-                )
-            )
-
-        u = await session.get(User, tg_user.id)
-
-    if u is None:
-        raise RuntimeError("Could not load or create Telegram user")
-
-    u.blocked = False
-    u.username = tg_user.username
-    u.first_name = tg_user.first_name
-    u.last_name = tg_user.last_name
-    await session.flush()
-    return u
 
 
 async def active_count(session: AsyncSession, user_id: int) -> int:
@@ -213,29 +176,34 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 welcome_text(u.language) + premium_note,
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
-            await m.answer("Quick actions stay pinned below — use them to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+            await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
             return
     await m.answer(
         welcome_text(u.language),
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
-    await m.answer("Quick actions stay pinned below — use them to navigate Orbsat.", reply_markup=persistent_menu_keyboard())
+    await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
 
 
-@router.message(F.text.in_({"🏠 Dashboard", "📊 Markets", "🔔 Alerts", "⭐ Premium"}))
+@router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
 async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService):
     """Handle visible quick-action labels without requiring slash-command syntax."""
     u = await get_user(session, m.from_user)
-    action = (m.text or "").strip()
-    if action == "🏠 Dashboard":
+    action_label = (m.text or "").strip()
+    action = {
+        tr(language, key): key
+        for language in ("en", "ar")
+        for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
+    }.get(action_label)
+    if action == "quick_dashboard":
         await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
-    elif action == "📊 Markets":
+    elif action == "quick_markets":
         try:
             text = await _market_snapshot(prices, u.language)
         except PriceError:
             text = tr(u.language, "market_snapshot_unavailable")
         await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
-    elif action == "🔔 Alerts":
+    elif action == "quick_alerts":
         rows = (await session.scalars(
             select(Alert).where(Alert.user_id == u.id, Alert.active.is_(True)).order_by(Alert.id)
         )).all()
@@ -252,7 +220,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
             tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
             reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
         )
-    elif action == "⭐ Premium":
+    elif action == "quick_premium":
         if u.id == settings.owner_id:
             await m.answer(tr(u.language, "premium_owner"))
             return
@@ -417,11 +385,8 @@ async def cb_crypto_prices(cb: CallbackQuery, session: AsyncSession, prices: Pri
             coin = next((item for item in payload["coins"] if item["rank"] == rank), None)
             if coin is None:
                 raise PriceError("Selected market rank is no longer available")
-            text = crypto_prices_text(payload, u.language, selected=coin)
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=tr(u.language, "prices_all"), callback_data="prices:all")],
-                [InlineKeyboardButton(text=tr(u.language, "prices_back_to_list"), callback_data="prices:open")],
-            ])
+            text = asset_detail_text(coin, u.language, payload, advanced=u.advanced_mode)
+            keyboard = asset_detail_keyboard(coin["symbol"], u.language, "prices:open")
         else:
             text = crypto_prices_text(payload, u.language)
             keyboard = crypto_prices_keyboard(payload["coins"], u.language)
@@ -506,18 +471,26 @@ def market_movers_text(snapshot: dict, language: str) -> str:
     )
 
 
-async def _market_movers_snapshot(prices: PriceService, language: str) -> str:
-    return market_movers_text(await prices.market_movers(), language)
+def market_movers_keyboard(snapshot: dict, language: str) -> InlineKeyboardMarkup:
+    rows = []
+    for item in snapshot["gainers"] + snapshot["losers"]:
+        label = f"{item['symbol'].upper()} {item['change_24h']:+.1f}%"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"asset:mover:{item['id']}")])
+    rows.append([InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.message(Command("movers"))
 async def cmd_movers(m: Message, session: AsyncSession, prices: PriceService):
     u = await get_user(session, m.from_user)
     try:
-        text = await _market_movers_snapshot(prices, u.language)
+        snapshot = await prices.market_movers()
+        text = market_movers_text(snapshot, u.language)
+        keyboard = market_movers_keyboard(snapshot, u.language)
     except PriceError:
         text = tr(u.language, "market_movers_unavailable")
-    await m.answer(text, reply_markup=nav_keyboard(u.id, lang=u.language))
+        keyboard = nav_keyboard(u.id, lang=u.language)
+    await m.answer(text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "dash:movers")
@@ -527,10 +500,38 @@ async def cb_movers(cb: CallbackQuery, session: AsyncSession, prices: PriceServi
     if not cb.message:
         return
     try:
-        text = await _market_movers_snapshot(prices, u.language)
+        snapshot = await prices.market_movers()
+        text = market_movers_text(snapshot, u.language)
+        keyboard = market_movers_keyboard(snapshot, u.language)
     except PriceError:
         text = tr(u.language, "market_movers_unavailable")
-    await edit_message_if_changed(cb.message, text, nav_keyboard(u.id, lang=u.language))
+        keyboard = nav_keyboard(u.id, lang=u.language)
+    await edit_message_if_changed(cb.message, text, keyboard)
+
+
+@router.callback_query(F.data.startswith("asset:mover:"))
+async def cb_mover_asset(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+    u = await get_user(session, cb.from_user)
+    if not cb.message:
+        await cb.answer()
+        return
+    coin_id = (cb.data or "").rsplit(":", 1)[-1]
+    try:
+        snapshot = await prices.market_movers()
+    except PriceError:
+        await cb.answer(tr(u.language, "market_movers_unavailable"), show_alert=True)
+        return
+    coin = next((item for item in snapshot["gainers"] + snapshot["losers"] if item["id"] == coin_id), None)
+    if coin is None:
+        await cb.answer(tr(u.language, "invalid_option"), show_alert=True)
+        return
+    detail = {**coin, "rank": None}
+    await edit_message_if_changed(
+        cb.message,
+        asset_detail_text(detail, u.language, snapshot, advanced=u.advanced_mode),
+        asset_detail_keyboard(coin["symbol"], u.language, "dash:movers"),
+    )
+    await cb.answer()
 
 
 
@@ -635,13 +636,51 @@ async def cmd_alerts(m: Message, session: AsyncSession):
         word = tr(u.language, "above" if a.op == ">" else "below")
         val = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
         paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
-        lines.append(f"{paused}#{a.id} {a.symbol} {word} {val}")
+        snoozed = f"⏸ {tr(u.language, 'alert_snoozed')} · " if a.snoozed_until and a.snoozed_until > utcnow() else ""
+        lines.append(f"{paused}{snoozed}#{a.id} {a.symbol} {word} {val}")
     await m.answer(
         tr(u.language, "active_alerts_header") + "\n" + "\n".join(lines) + "\n\n" + tr(u.language, "remove_alert_hint"),
         reply_markup=alerts_keyboard(rows, u.id, lang=u.language),
     )
 
 
+def alert_history_text(rows: list[Alert], language: str, timezone_name: str = "UTC") -> str:
+    if not rows:
+        return tr(language, "alert_history_empty")
+    lines = [tr(language, "alert_history_title")]
+    try:
+        display_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        display_timezone = ZoneInfo("UTC")
+        timezone_name = "UTC"
+    for alert in rows:
+        relation = tr(language, "above" if alert.op == ">" else "below")
+        target = f"{alert.target:g} gwei" if alert.kind == "gas" else fmt_usd(alert.target)
+        date = alert.triggered_at.astimezone(display_timezone).strftime("%Y-%m-%d %H:%M") if alert.triggered_at else "—"
+        lines.append(tr(language, "alert_history_row", id=alert.id, symbol=alert.symbol, relation=relation, target=target, date=date, timezone=timezone_name))
+    return "\n".join(lines)
+
+
+@router.message(Command("history"))
+async def cmd_alert_history(message: Message, session: AsyncSession):
+    user = await get_user(session, message.from_user)
+    rows = (await session.scalars(
+        select(Alert).where(Alert.user_id == user.id, Alert.triggered_at.is_not(None))
+        .order_by(Alert.triggered_at.desc()).limit(20)
+    )).all()
+    await message.answer(alert_history_text(rows, user.language, user.timezone), reply_markup=nav_keyboard(user.id, lang=user.language))
+
+
+@router.callback_query(F.data == "alerts:history")
+async def cb_alert_history(callback: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, callback.from_user)
+    rows = (await session.scalars(
+        select(Alert).where(Alert.user_id == user.id, Alert.triggered_at.is_not(None))
+        .order_by(Alert.triggered_at.desc()).limit(20)
+    )).all()
+    if callback.message:
+        await edit_message_if_changed(callback.message, alert_history_text(rows, user.language, user.timezone), nav_keyboard(user.id, lang=user.language))
+    await callback.answer()
 @router.message(Command("del"))
 async def cmd_del(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user)
@@ -901,6 +940,104 @@ async def cmd_cancel_alert(m: Message, state: FSMContext, session: AsyncSession)
     await m.answer(tr(u.language, "cancelled"), reply_markup=nav_keyboard(u.id, lang=u.language))
 
 
+@router.callback_query(F.data.startswith("alertedit:"))
+async def cb_edit_alert(cb: CallbackQuery, session: AsyncSession, state: FSMContext):
+    user = await get_user(session, cb.from_user)
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await cb.answer(tr(user.language, "invalid_option"), show_alert=True)
+        return
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await cb.answer(tr(user.language, "alert_not_found"), show_alert=True)
+        return
+    await state.clear()
+    await state.set_state(AlertEditInput.waiting)
+    await state.update_data(alert_id=alert.id)
+    if cb.message:
+        await cb.message.answer(tr(user.language, "alert_edit_prompt", symbol=alert.symbol or "GAS"))
+    await cb.answer()
+
+
+@router.message(AlertEditInput.waiting, F.text)
+async def receive_alert_edit_value(message: Message, state: FSMContext, session: AsyncSession):
+    user = await get_user(session, message.from_user)
+    raw = (message.text or "").strip()
+    if raw.lower() in {"/cancel", "cancel"}:
+        await state.clear()
+        await message.answer(tr(user.language, "cancelled"), reply_markup=nav_keyboard(user.id, lang=user.language))
+        return
+    data = await state.get_data()
+    try:
+        target = parse_number(raw)
+    except ValueError:
+        await message.answer(tr(user.language, "alert_edit_invalid"))
+        return
+    alert_id = data.get("alert_id")
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await state.clear()
+        await message.answer(tr(user.language, "alert_not_found"), reply_markup=nav_keyboard(user.id, lang=user.language))
+        return
+    alert.target = target
+    await session.flush()
+    await state.clear()
+    formatted = f"{target:g} gwei" if alert.kind == "gas" else fmt_usd(target)
+    await message.answer(
+        tr(user.language, "alert_updated", id=alert.id, target=formatted),
+        reply_markup=nav_keyboard(user.id, lang=user.language),
+    )
+@router.callback_query(F.data.startswith("alertsnooze:"))
+async def cb_snooze_alert(cb: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, cb.from_user)
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await cb.answer(tr(user.language, "invalid_option"), show_alert=True)
+        return
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await cb.answer(tr(user.language, "alert_not_found"), show_alert=True)
+        return
+    alert.snoozed_until = utcnow() + timedelta(hours=1)
+    await session.flush()
+    rows = (await session.scalars(
+        select(Alert).where(Alert.user_id == user.id, Alert.active.is_(True)).order_by(Alert.id)
+    )).all()
+    if cb.message:
+        await cb.message.edit_reply_markup(reply_markup=alerts_keyboard(rows, user.id, lang=user.language))
+    await cb.answer(tr(user.language, "alert_snoozed_toast"))
+
+
+@router.callback_query(F.data.startswith("alertresume:"))
+async def cb_resume_alert(cb: CallbackQuery, session: AsyncSession):
+    user = await get_user(session, cb.from_user)
+    try:
+        alert_id = int((cb.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await cb.answer(tr(user.language, "invalid_option"), show_alert=True)
+        return
+    alert = await session.scalar(
+        select(Alert).where(Alert.id == alert_id, Alert.user_id == user.id, Alert.active.is_(True))
+    )
+    if alert is None:
+        await cb.answer(tr(user.language, "alert_not_found"), show_alert=True)
+        return
+    alert.snoozed_until = None
+    await session.flush()
+    rows = (await session.scalars(
+        select(Alert).where(Alert.user_id == user.id, Alert.active.is_(True)).order_by(Alert.id)
+    )).all()
+    if cb.message:
+        await cb.message.edit_reply_markup(reply_markup=alerts_keyboard(rows, user.id, lang=user.language))
+    await cb.answer(tr(user.language, "alert_resumed_toast"))
 @router.callback_query(F.data.startswith("alertdel:"))
 async def cb_delete_alert(cb: CallbackQuery, session: AsyncSession):
     await cb.answer()
@@ -952,7 +1089,8 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
                 word = "above" if a.op == ">" else "below"
                 value = f"{a.target:g} gwei" if a.kind == "gas" else fmt_usd(a.target)
                 paused = f"⏸ {tr(u.language, 'entitlement_paused')} · " if a.entitlement_paused else ""
-                lines.append(f"{paused}#{a.id} {a.symbol} {word} {value}")
+                snoozed = f"⏸ {tr(u.language, 'alert_snoozed')} · " if a.snoozed_until and a.snoozed_until > utcnow() else ""
+                lines.append(f"{paused}{snoozed}#{a.id} {a.symbol} {word} {value}")
             text = "🔔 <b>Your active alerts</b>\n" + "\n".join(lines)
         else:
             text = tr(u.language, "no_alerts")

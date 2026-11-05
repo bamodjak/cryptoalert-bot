@@ -11,14 +11,16 @@ import math
 import time
 
 import aiohttp
+
+from .assets import CORE_ASSETS
 from redis.asyncio import Redis
 
 log = logging.getLogger(__name__)
 
-UNIVERSE = (
-    ("BTC", "BTCUSDT"), ("ETH", "ETHUSDT"), ("SOL", "SOLUSDT"),
-    ("BNB", "BNBUSDT"), ("XRP", "XRPUSDT"), ("DOGE", "DOGEUSDT"),
-    ("LINK", "LINKUSDT"), ("AVAX", "AVAXUSDT"),
+UNIVERSE = tuple(
+    (asset.symbol.upper(), asset.binance_pair.upper())
+    for asset in CORE_ASSETS
+    if asset.advisor_enabled and asset.binance_pair
 )
 CACHE_KEY = "advisor:premium:latest"
 CACHE_SECONDS = 300

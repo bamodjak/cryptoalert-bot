@@ -48,3 +48,50 @@ def test_market_trade_cache_rejects_unknown_pairs_and_invalid_prices():
     assert live_dashboard.record_trade("UNKNOWNUSDT", 1.0, received_at=123.0) is False
     assert live_dashboard.record_trade("BTCUSDT", 0.0, received_at=123.0) is False
     assert live_dashboard.LIVE_QUOTES == {}
+
+
+def test_live_runtime_elects_one_owner_for_stream_and_dashboard(monkeypatch):
+    import asyncio
+    from app import live_dashboard
+
+    class FakeLock:
+        def __init__(self):
+            self.acquired = False
+            self.released = False
+        async def acquire(self, blocking=False):
+            self.acquired = True
+            return True
+        async def extend(self, ttl, replace_ttl=False):
+            return True
+        async def release(self):
+            self.released = True
+
+    class FakeRedis:
+        def __init__(self):
+            self.lock_instance = FakeLock()
+        def lock(self, name, timeout, blocking):
+            assert name == live_dashboard.LIVE_RUNTIME_LOCK_KEY
+            assert timeout == live_dashboard.LIVE_RUNTIME_LOCK_TTL
+            assert blocking is False
+            return self.lock_instance
+
+    async def run():
+        started = []
+        async def fake_worker(*args):
+            started.append(True)
+            await stop.wait()
+        monkeypatch.setattr(live_dashboard, "live_market_stream", fake_worker)
+        monkeypatch.setattr(live_dashboard, "live_dashboard_loop", fake_worker)
+        redis = FakeRedis()
+        stop = asyncio.Event()
+        task = asyncio.create_task(live_dashboard.live_runtime_loop(object(), redis, object(), stop))
+        for _ in range(100):
+            if len(started) == 2:
+                break
+            await asyncio.sleep(0.001)
+        assert len(started) == 2
+        stop.set()
+        await asyncio.wait_for(task, timeout=1)
+        assert redis.lock_instance.acquired is True
+        assert redis.lock_instance.released is True
+    asyncio.run(run())

@@ -85,3 +85,14 @@ Keep `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` identical.
 ## Selling it
 - Run it as your own product (Stars revenue), or white-label it per client: one `.env` + one compose stack per client.
 - Keep the "not financial advice" disclaimer. Never store or ask for users' keys or wallets.
+## Unified asset experience and user controls
+
+Orbsat uses a canonical core asset registry shared by the price service, watchlists, live dashboard and quantitative research universe. Top-33 and market-mover assets open a common detail view with contextual actions to create alerts, add to a watchlist and open research where available.
+
+Users can manage their preferred language, timezone and advanced presentation mode from /settings. Advanced mode reveals additional market-cap and 24-hour volume context when the provider supplies it. Alert management supports editing targets, one-hour snoozing, resuming and a recent triggered-alert history via /history.
+
+These features are implemented as a modular monolith. The application keeps one deployment and shared PostgreSQL/Redis infrastructure while separating domain concepts, application services, provider adapters, Telegram routers and background workers. See docs/architecture/blueprint.md for dependency rules and the staged migration plan.
+
+Database upgrades are additive. The alert snooze and user preference migrations preserve existing rows and values.
+
+The live trade stream and dashboard updater run under one Redis-elected runtime lease, keeping their in-memory quote state together during overlapping deployments.

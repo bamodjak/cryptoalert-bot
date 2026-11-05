@@ -24,6 +24,8 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     language: Mapped[str] = mapped_column(String(2), default="en", server_default="en", nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC", nullable=False)
+    advanced_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     premium_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
@@ -42,6 +44,7 @@ class Alert(Base):
     __table_args__ = (
         Index("ix_alerts_active_kind", "active", "kind"),
         Index("ix_alerts_active_entitlement", "active", "entitlement_paused"),
+        Index("ix_alerts_snoozed_until", "snoozed_until"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -53,6 +56,7 @@ class Alert(Base):
     target: Mapped[float] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     entitlement_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

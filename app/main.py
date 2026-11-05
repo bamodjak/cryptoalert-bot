@@ -22,11 +22,12 @@ from .config import settings
 from .db import Alert, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
 from .watchlists import router as watchlists_router
-from .live_dashboard import live_dashboard_loop, live_market_stream, router as live_dashboard_router
+from .live_dashboard import live_runtime_loop, router as live_dashboard_router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .admin_management import router as admin_management_router
 from .middlewares import KILL_KEY, CallbackTraceMiddleware, DbSessionMiddleware, KillSwitchMiddleware, MessageTraceMiddleware, ThrottleMiddleware
 from .prices import PriceService
+from .preferences import router as preferences_router
 
 log = logging.getLogger("bot")
 
@@ -39,12 +40,14 @@ COMMANDS = [
     BotCommand(command="movers", description="Top 24-hour market movers"),
     BotCommand(command="live", description="Premium live market dashboard"),
     BotCommand(command="alerts", description="View or remove your alerts"),
+    BotCommand(command="history", description="View recently triggered alerts"),
     BotCommand(command="watchlist", description="Track your favourite assets"),
     BotCommand(command="signals", description="Premium quantitative market research"),
     BotCommand(command="gas", description="Check Ethereum network gas"),
     BotCommand(command="premium", description="Unlock more alerts"),
     BotCommand(command="help", description="How Orbsat works"),
     BotCommand(command="language", description="Change language / تغيير اللغة"),
+    BotCommand(command="settings", description="Personal settings and timezone"),
     BotCommand(command="terms", description="Service terms"),
     BotCommand(command="paysupport", description="Payment help"),
 ]
@@ -55,7 +58,7 @@ telegram_transport_ready = False
 
 def register_routers(dp: Dispatcher) -> None:
     # Specific admin-tools callbacks must precede the generic admin:* callback handler.
-    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, live_dashboard_router, watchlists_router, router)
+    dp.include_routers(admin_management_router, admin_tools_router, admin, giveaway_public_router, live_dashboard_router, watchlists_router, preferences_router, router)
 
 
 def build_web_app(redis: Redis) -> web.Application:
@@ -290,8 +293,7 @@ async def main() -> None:
     app = build_web_app(redis)
     stop = asyncio.Event()
     worker_task = asyncio.create_task(worker.alert_loop(bot, prices, redis, stop))
-    live_stream_task = asyncio.create_task(live_market_stream(redis, http, stop))
-    live_dashboard_task = asyncio.create_task(live_dashboard_loop(bot, redis, stop))
+    live_runtime_task = asyncio.create_task(live_runtime_loop(bot, redis, http, stop))
     runner = None
     try:
         if settings.webhook_base_url:
@@ -330,12 +332,11 @@ async def main() -> None:
     finally:
         telegram_transport_ready = False
         stop.set()
-        for task in (live_stream_task, live_dashboard_task):
-            try:
-                await asyncio.wait_for(task, timeout=5)
-            except asyncio.TimeoutError:
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+        try:
+            await asyncio.wait_for(live_runtime_task, timeout=5)
+        except asyncio.TimeoutError:
+            live_runtime_task.cancel()
+            await asyncio.gather(live_runtime_task, return_exceptions=True)
         try:
             await asyncio.wait_for(worker_task, timeout=10)
         except asyncio.TimeoutError:

@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import User, Session
+from .assets import CORE_ASSETS
 from .i18n import tr
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
@@ -27,22 +28,9 @@ router = Router(name="live_dashboard")
 
 # These pairs mirror the assets already supported by PriceService. Pair availability
 # can vary by exchange; a missing stream simply shows as unavailable in the dashboard.
-COINS = (
-    ("bitcoin", "BTC", "Bitcoin", "btcusdt"),
-    ("ethereum", "ETH", "Ethereum", "ethusdt"),
-    ("solana", "SOL", "Solana", "solusdt"),
-    ("binancecoin", "BNB", "BNB", "bnbusdt"),
-    ("ripple", "XRP", "XRP", "xrpusdt"),
-    ("dogecoin", "DOGE", "Dogecoin", "dogeusdt"),
-    ("cardano", "ADA", "Cardano", "adausdt"),
-    ("the-open-network", "TON", "Toncoin", "tonusdt"),
-    ("tron", "TRX", "TRON", "trxusdt"),
-    ("avalanche-2", "AVAX", "Avalanche", "avaxusdt"),
-    ("polkadot", "DOT", "Polkadot", "dotusdt"),
-    ("chainlink", "LINK", "Chainlink", "linkusdt"),
-    ("litecoin", "LTC", "Litecoin", "ltcusdt"),
-    ("tether", "USDT", "Tether", ""),
-    ("usd-coin", "USDC", "USDC", "usdcusdt"),
+COINS = tuple(
+    (asset.coin_id, asset.symbol.upper(), asset.name, asset.binance_pair or "")
+    for asset in CORE_ASSETS
 )
 PAIR_TO_COIN = {pair.upper(): (coin_id, symbol, name) for coin_id, symbol, name, pair in COINS if pair}
 DASHBOARDS_KEY = "live:dashboards"
@@ -286,3 +274,78 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
         except asyncio.TimeoutError:
             pass
     log.info("live dashboard updater stopped")
+
+LIVE_RUNTIME_LOCK_KEY = "live:runtime"
+LIVE_RUNTIME_LOCK_TTL = 90
+LIVE_RUNTIME_RENEW_SECONDS = 20
+
+
+async def _renew_live_runtime_lease(lock, stop: asyncio.Event, lost: asyncio.Event) -> None:
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=LIVE_RUNTIME_RENEW_SECONDS)
+            return
+        except asyncio.TimeoutError:
+            pass
+        try:
+            if not await lock.extend(LIVE_RUNTIME_LOCK_TTL, replace_ttl=True):
+                log.critical("live market runtime lease lost")
+                lost.set()
+                return
+        except Exception:
+            log.exception("live market runtime lease renewal failed")
+            lost.set()
+            return
+
+
+async def live_runtime_loop(bot: Bot, redis: Redis, http: aiohttp.ClientSession, stop: asyncio.Event) -> None:
+    """Elect one instance to own both the in-memory stream and dashboard updater."""
+    while not stop.is_set():
+        lock = redis.lock(LIVE_RUNTIME_LOCK_KEY, timeout=LIVE_RUNTIME_LOCK_TTL, blocking=False)
+        try:
+            acquired = await lock.acquire(blocking=False)
+        except Exception:
+            log.exception("could not acquire live market runtime lease")
+            acquired = False
+        if not acquired:
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
+            continue
+
+        log.info("live market runtime lease acquired")
+        lost = asyncio.Event()
+        renewal_task = asyncio.create_task(_renew_live_runtime_lease(lock, stop, lost))
+        stream_task = asyncio.create_task(live_market_stream(redis, http, stop))
+        dashboard_task = asyncio.create_task(live_dashboard_loop(bot, redis, stop))
+        lost_task = asyncio.create_task(lost.wait())
+        stop_task = asyncio.create_task(stop.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {stream_task, dashboard_task, lost_task, stop_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if lost_task in done and lost.is_set():
+                log.error("stopping live workers after losing runtime lease")
+            elif stop_task not in done and (stream_task in done or dashboard_task in done):
+                log.error("a live market worker stopped unexpectedly")
+        finally:
+            for task in (stream_task, dashboard_task, lost_task, stop_task, renewal_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                stream_task, dashboard_task, lost_task, stop_task, renewal_task,
+                return_exceptions=True,
+            )
+            try:
+                await lock.release()
+            except Exception:
+                log.warning("live market runtime lease was not owned at release")
+            log.info("live market runtime lease released")
+
+        if not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
