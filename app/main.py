@@ -14,6 +14,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
+from redis.exceptions import LockNotOwnedError
 from sqlalchemy import func, select, text
 
 from . import worker
@@ -120,6 +121,90 @@ def build_web_app(redis: Redis) -> web.Application:
     return app
 
 
+
+POLLING_LOCK_KEY = "bot:telegram-poller"
+POLLING_LOCK_TTL_SECONDS = 90
+POLLING_LOCK_RETRY_SECONDS = 2
+POLLING_LOCK_RENEW_SECONDS = 25
+
+
+async def _renew_polling_lock(lock, dispatcher: Dispatcher, stop: asyncio.Event) -> None:
+    """Renew the singleton Telegram polling lease; stop polling if ownership is lost."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=POLLING_LOCK_RENEW_SECONDS)
+            return
+        except asyncio.TimeoutError:
+            pass
+        try:
+            if not await lock.extend(POLLING_LOCK_TTL_SECONDS, replace_ttl=True):
+                log.critical("Telegram polling lease renewal failed; stopping this poller")
+                stop.set()
+                await dispatcher.stop_polling()
+                return
+        except Exception:
+            log.exception("Telegram polling lease renewal errored; stopping this poller")
+            stop.set()
+            await dispatcher.stop_polling()
+            return
+
+
+async def run_polling_with_lock(
+    dispatcher: Dispatcher, bot: Bot, redis: Redis, stop: asyncio.Event
+) -> None:
+    """Run exactly one Telegram getUpdates consumer across overlapping deployments."""
+    lock = redis.lock(POLLING_LOCK_KEY, timeout=POLLING_LOCK_TTL_SECONDS, blocking=False)
+    acquired = False
+    while not stop.is_set():
+        try:
+            acquired = await lock.acquire(blocking=False)
+        except Exception:
+            log.exception("Could not acquire Telegram polling lease; retrying")
+        if acquired:
+            break
+        log.warning("Telegram polling lease is held by another instance; waiting")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=POLLING_LOCK_RETRY_SECONDS)
+        except asyncio.TimeoutError:
+            pass
+
+    if not acquired:
+        log.info("Shutdown requested before Telegram polling lease was acquired")
+        return
+
+    log.info("Telegram polling lease acquired")
+    renewal_stop = asyncio.Event()
+    renewal_task = asyncio.create_task(_renew_polling_lock(lock, dispatcher, renewal_stop))
+    polling_task = asyncio.create_task(
+        dispatcher.start_polling(
+            bot,
+            allowed_updates=dispatcher.resolve_used_update_types(),
+            handle_signals=False,
+        )
+    )
+    stop_task = asyncio.create_task(stop.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {polling_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if stop_task in done and not polling_task.done():
+            await dispatcher.stop_polling()
+        await polling_task
+    finally:
+        stop_task.cancel()
+        await asyncio.gather(stop_task, return_exceptions=True)
+        renewal_stop.set()
+        renewal_task.cancel()
+        await asyncio.gather(renewal_task, return_exceptions=True)
+        try:
+            await lock.release()
+            log.info("Telegram polling lease released")
+        except LockNotOwnedError:
+            log.warning("Telegram polling lease was no longer owned at shutdown")
+        except Exception:
+            log.exception("Could not release Telegram polling lease")
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -203,7 +288,10 @@ async def main() -> None:
             await web.TCPSite(runner, settings.host, settings.port).start()
             await bot.delete_webhook(drop_pending_updates=False)
             log.info("polling mode (health on :%s)", settings.port)
-            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, stop.set)
+            await run_polling_with_lock(dp, bot, redis, stop)
     finally:
         stop.set()
         for task in (live_stream_task, live_dashboard_task):
