@@ -184,7 +184,8 @@ TEXT = {
 /terms — Service terms.
 /paysupport — Payment and refund support.
 
-Use the buttons on the home screen if you prefer not to type commands. Market data can be delayed; alerts are best-effort. Nothing here is financial advice.""",\n        "welcome": "<b>ORBSAT · CRYPTO INTELLIGENCE</b>\nYour market, your alerts, one place.\n\n📊 Track the global market and top movers.\n🔔 Build price alerts in a few taps.\n⭐ Free: {free} active alerts · Premium: {premium} alerts + Ethereum gas alerts ({stars} ⭐ / {days} days).\n\n<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>",
+Use the buttons on the home screen if you prefer not to type commands. Market data can be delayed; alerts are best-effort. Nothing here is financial advice.""",
+        "welcome": "<b>ORBSAT · CRYPTO INTELLIGENCE</b>\nYour market, your alerts, one place.\n\n📊 Track the global market and top movers.\n🔔 Build price alerts in a few taps.\n⭐ Free: {free} active alerts · Premium: {premium} alerts + Ethereum gas alerts ({stars} ⭐ / {days} days).\n\n<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>",
         "premium_title": "<b>⭐ Choose your plan</b>",
         "free_plan": "<b>FREE · 0 ⭐</b>\n• Up to {free} active alerts\n• Core crypto price alerts\n• Telegram notifications",
         "premium_plan": "<b>PREMIUM · {stars} ⭐ / {days} days</b>\n• Up to {premium} active alerts\n• Ethereum gas alerts\n• Live market dashboard inside Telegram chat\n• Keep using the same account; no subscription website needed",
@@ -397,7 +398,8 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
 /terms — شروط الخدمة.
 /paysupport — المساعدة في الدفع والاسترداد.
 
-يمكنك استخدام أزرار الصفحة الرئيسية بدلاً من كتابة الأوامر. قد تتأخر بيانات السوق، والتنبيهات حسب أفضل جهد وليست نصيحة مالية.""",\n        "welcome": "<b>مرحباً بك في ORBSAT · ذكاء سوق العملات الرقمية</b>\nالسوق وتنبيهاتك في مكان واحد.\n\n📊 تابع السوق العالمي والعملات الأكثر حركة.\n🔔 أنشئ تنبيهات الأسعار بخطوات بسيطة.\n⭐ المجانية: {free} تنبيهات نشطة · بريميوم: {premium} تنبيهاً وتنبيهات رسوم إيثيريوم ({stars} ⭐ / {days} يوماً).\n\n<i>قد تتأخر بيانات السوق. التنبيهات حسب أفضل جهد وليست نصيحة مالية.</i>",
+يمكنك استخدام أزرار الصفحة الرئيسية بدلاً من كتابة الأوامر. قد تتأخر بيانات السوق، والتنبيهات حسب أفضل جهد وليست نصيحة مالية.""",
+        "welcome": "<b>مرحباً بك في ORBSAT · ذكاء سوق العملات الرقمية</b>\nالسوق وتنبيهاتك في مكان واحد.\n\n📊 تابع السوق العالمي والعملات الأكثر حركة.\n🔔 أنشئ تنبيهات الأسعار بخطوات بسيطة.\n⭐ المجانية: {free} تنبيهات نشطة · بريميوم: {premium} تنبيهاً وتنبيهات رسوم إيثيريوم ({stars} ⭐ / {days} يوماً).\n\n<i>قد تتأخر بيانات السوق. التنبيهات حسب أفضل جهد وليست نصيحة مالية.</i>",
         "premium_title": "<b>⭐ اختر خطتك</b>",
         "free_plan": "<b>مجانية · 0 ⭐</b>\n• حتى {free} تنبيهات نشطة\n• تنبيهات أسعار العملات الرقمية\n• إشعارات تيليجرام",
         "premium_plan": "<b>بريميوم · {stars} ⭐ / {days} يوماً</b>\n• حتى {premium} تنبيهاً نشطاً\n• تنبيهات رسوم شبكة إيثيريوم\n• لوحة أسعار مباشرة داخل محادثة تيليجرام\n• استخدم الحساب نفسه دون الحاجة إلى موقع اشتراك",
