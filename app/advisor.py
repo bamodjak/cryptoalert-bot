@@ -279,7 +279,7 @@ def format_advisory(rows: list[dict], language: str = "en") -> str:
         )
         if row["invalidation"] is not None:
             line += f"\nReference invalidation ${row['invalidation']:,.6g} · 2.5 ATR objective ${row['objective']:,.6g}"
-        reasons = [reason_labels[key][1 if arabic else 0] for key in row.get("reasons", []) if key in reason_labels]
+        reasons = [reason_labels[key][1 if arabic else 0] for key in row.get("reasons", []) if key in reason_labels][:3]
         if reasons:
             line += ("\nالأسباب: " if arabic else "\nWhy: ") + "؛ ".join(reasons) if arabic else "\nWhy: " + "; ".join(reasons)
         history = row.get("history")
