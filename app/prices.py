@@ -224,7 +224,7 @@ class PriceService:
                 "market_cap_change_24h": float(data["market_cap_change_percentage_24h_usd"]),
                 "btc_dominance": float(data["market_cap_percentage"]["btc"]),
                 "active_cryptocurrencies": int(data["active_cryptocurrencies"]),
-                "fetched_at": int(time.time()),
+                "fetched_at": int(data.get("updated_at") or time.time()),
                 "stale": False,
             }
             if (
