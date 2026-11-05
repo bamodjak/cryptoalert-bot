@@ -24,3 +24,13 @@ def test_alerts_keyboard_exposes_history_entry():
     keyboard = alerts_keyboard([], user_id=1, lang="en")
     callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
     assert "alerts:history" in callbacks
+
+
+def test_alert_history_converts_timestamps_to_selected_timezone():
+    row = SimpleNamespace(
+        id=5, symbol="ETH", kind="price", op="<", target=2500.0,
+        triggered_at=datetime(2026, 11, 5, 8, 30, tzinfo=timezone.utc),
+    )
+    rendered = alert_history_text([row], "en", "America/New_York")
+    assert "2026-11-05 03:30" in rendered
+    assert "America/New_York" in rendered
