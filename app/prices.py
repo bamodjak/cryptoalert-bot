@@ -162,16 +162,28 @@ class PriceService:
 
         unresolved = [cid for cid in missing if cid not in data or "usd" not in data.get(cid, {})]
         if unresolved:
-            # Fetch fallback quotes concurrently instead of serially, avoiding
-            # a long wait when several coins are requested by the alert worker.
-            results = await asyncio.gather(
-                *(self._paprika_price(cid) for cid in unresolved),
-                return_exceptions=True,
-            )
-            for cid, value in zip(unresolved, results):
-                if isinstance(value, (float, int)) and value > 0:
-                    data[cid] = {"usd": float(value)}
-                elif allow_stale and cid in stale:
+            # One cached bulk request avoids a burst of per-asset calls against
+            # CoinPaprika's shared public rate limit.
+            rows = await self._paprika_tickers()
+            ticker_by_id = {
+                str(row.get("id")): row
+                for row in rows or []
+                if isinstance(row, dict) and row.get("id")
+            }
+            for cid in unresolved:
+                ticker = ticker_by_id.get(PAPRIKA_IDS.get(cid, ""))
+                value = (
+                    ticker.get("quotes", {}).get("USD", {}).get("price")
+                    if ticker else None
+                )
+                try:
+                    price = float(value)
+                    if math.isfinite(price) and price > 0:
+                        data[cid] = {"usd": price}
+                        continue
+                except (TypeError, ValueError):
+                    pass
+                if allow_stale and cid in stale:
                     data[cid] = {"usd": stale[cid]}
 
         pipe = self.redis.pipeline()
@@ -208,6 +220,25 @@ class PriceService:
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError) as exc:
             log.warning("CoinPaprika market fallback failed path=%s status=%s error=%s", path, getattr(exc, "status", "-"), type(exc).__name__)
             return None
+
+    async def _paprika_tickers(self) -> list[dict] | None:
+        """Return a shared, short-lived CoinPaprika ticker snapshot."""
+        cache_key = "paprika:tickers:usd"
+        cached = await self.redis.get(cache_key)
+        if cached is not None:
+            try:
+                rows = json.loads(cached)
+                if isinstance(rows, list):
+                    return rows
+                log.warning("discarding malformed cached CoinPaprika tickers")
+            except (TypeError, ValueError):
+                log.warning("discarding malformed cached CoinPaprika tickers")
+
+        rows = await self._paprika_tickers()
+        if isinstance(rows, list):
+            await self.redis.set(cache_key, json.dumps(rows, separators=(",", ":")), ex=60)
+            return rows
+        return None
 
     async def market_overview(self) -> dict:
         """Return global metrics from CoinGecko, falling back to CoinPaprika and bounded stale data."""
