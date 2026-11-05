@@ -23,7 +23,7 @@ from .handlers import admin, router
 from .live_dashboard import live_dashboard_loop, live_market_stream, router as live_dashboard_router
 from .admin_tools import public_router as giveaway_public_router, router as admin_tools_router
 from .admin_management import router as admin_management_router
-from .middlewares import KILL_KEY, CallbackTraceMiddleware, DbSessionMiddleware, KillSwitchMiddleware, ThrottleMiddleware
+from .middlewares import KILL_KEY, CallbackTraceMiddleware, DbSessionMiddleware, KillSwitchMiddleware, MessageTraceMiddleware, ThrottleMiddleware
 from .prices import PriceService
 
 log = logging.getLogger("bot")
@@ -134,8 +134,10 @@ async def main() -> None:
     dp.update.outer_middleware(KillSwitchMiddleware(redis))
     dp.update.middleware(DbSessionMiddleware())
     dp.message.middleware(ThrottleMiddleware(redis))
+    dp.message.middleware(MessageTraceMiddleware())
     dp.callback_query.middleware(CallbackTraceMiddleware())
     register_routers(dp)
+    log.info("Telegram routers registered: %s", ",".join(router.name or "unnamed" for router in dp.sub_routers))
 
     # Profile metadata is stable and should not be rewritten on every restart:
     # Telegram rate-limits these methods aggressively. Opt in only when deliberately
