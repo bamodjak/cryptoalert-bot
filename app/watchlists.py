@@ -5,7 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .config import settings
 from .db import User, Watchlist
 from .handlers import get_user, nav_keyboard
 from .parsing import fmt_usd
@@ -22,22 +21,22 @@ SUPPORTED = (
 )
 
 
-def watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKeyboardMarkup:
+def _label(language: str, english: str, arabic: str) -> str:\n    return arabic if language == "ar" else english\n\n\ndef watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text=f"✖ {row.symbol.upper()}", callback_data=f"wl:del:{row.id}")]
         for row in rows
     ]
-    buttons.append([InlineKeyboardButton(text="＋ Add asset", callback_data="wl:add")])
-    buttons.append([InlineKeyboardButton(text="⌂ Dashboard", callback_data="nav:home")])
+    buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add asset", "＋ إضافة أصل"), callback_data="wl:add")])
+    buttons.append([InlineKeyboardButton(text=_label(language, "⌂ Dashboard", "⌂ الرئيسية"), callback_data="nav:home")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def asset_picker_keyboard() -> InlineKeyboardMarkup:
+def asset_picker_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text=f"{symbol.upper()} · {name}", callback_data=f"wl:add:{symbol}")]
         for symbol, name in SUPPORTED
     ]
-    buttons.append([InlineKeyboardButton(text="‹ Back to watchlist", callback_data="wl:open")])
+    buttons.append([InlineKeyboardButton(text=_label(language, "‹ Back to watchlist", "‹ العودة إلى قائمة المتابعة"), callback_data="wl:open")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -52,10 +51,10 @@ async def render_watchlist(session: AsyncSession, user: User, prices: PriceServi
             quotes = await prices.prices([row.coin_id for row in rows], allow_stale=True)
         except PriceError:
             quotes = {}
-        lines = ["⭐ <b>Your watchlist</b>"]
+        lines = [_label(user.language, "⭐ <b>Your watchlist</b>", "⭐ <b>قائمة المتابعة</b>")]
         for row in rows:
             value = quotes.get(row.coin_id)
-            price = fmt_usd(value) if value is not None else "Quote unavailable"
+            price = fmt_usd(value) if value is not None else _label(user.language, "Quote unavailable", "السعر غير متاح")
             lines.append(f"• <b>{row.symbol.upper()}</b> — {price}")
         body = "\n".join(lines)
     body += f"\n\n{len(rows)}/{MAX_WATCHLIST_ITEMS} assets"
