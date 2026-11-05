@@ -96,3 +96,8 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 - User settings persist independent price-alert and gas-alert notification toggles. Disabled categories are excluded from alert evaluation; their active rules remain stored and can resume when re-enabled.
 - The premium advisor exposes stable, human-readable reasons for trend, momentum, RSI, volume and volatility contributions.
 - The advisor includes a closed-candle historical directional evaluation with sample count, win rate and average directional return. It is explicitly in-sample, excludes fees/slippage and is not presented as a forecast.
+
+## Live-market operational telemetry
+
+- Prometheus metrics expose runtime lease ownership, WebSocket connection state, reconnects, received trades, dashboard edits, edit failures and lease-loss events.
+- The public `/health` response keeps dependency and alert-worker readiness checks, and adds non-sensitive `live_runtime_active` and `live_stream_connected` fields. A disconnected exchange stream remains observable without falsely marking the entire bot unavailable.
