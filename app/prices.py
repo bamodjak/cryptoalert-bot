@@ -359,7 +359,7 @@ class PriceService:
         except PriceError as exc:
             log.warning("CoinGecko movers unavailable; trying CoinPaprika (%s)", type(exc).__name__)
             source = "coinpaprika"
-            rows = await self._paprika_json("/tickers", {"quotes": "USD"})
+            rows = await self._paprika_tickers()
 
         candidates = []
         if isinstance(rows, list):
@@ -441,7 +441,7 @@ class PriceService:
         except PriceError as exc:
             log.warning("CoinGecko top-33 prices unavailable; trying CoinPaprika (%s)", type(exc).__name__)
             source = "coinpaprika"
-            rows = await self._paprika_json("/tickers", {"quotes": "USD"})
+            rows = await self._paprika_tickers()
 
         coins = []
         if isinstance(rows, list):
