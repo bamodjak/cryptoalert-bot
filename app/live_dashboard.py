@@ -328,7 +328,7 @@ async def live_runtime_loop(bot: Bot, redis: Redis, http: aiohttp.ClientSession,
             )
             if lost_task in done and lost.is_set():
                 log.error("stopping live workers after losing runtime lease")
-            elif stream_task in done or dashboard_task in done:
+            elif stop_task not in done and (stream_task in done or dashboard_task in done):
                 log.error("a live market worker stopped unexpectedly")
         finally:
             for task in (stream_task, dashboard_task, lost_task, stop_task, renewal_task):
