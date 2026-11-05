@@ -35,3 +35,11 @@ def test_advanced_mode_reveals_additional_market_metrics():
     assert "Market cap:" not in basic
     assert "Market cap:" in advanced
     assert "24h volume:" in advanced
+
+
+def test_asset_detail_hides_research_action_when_asset_is_outside_advisor_universe():
+    keyboard = asset_detail_keyboard("ada", "en", "prices:open")
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+    assert "advisor:open" not in callbacks
+    assert "create:coin:ada" in callbacks
+    assert "wl:add:ada" in callbacks
