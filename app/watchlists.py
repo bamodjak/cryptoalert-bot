@@ -21,7 +21,11 @@ SUPPORTED = (
 )
 
 
-def _label(language: str, english: str, arabic: str) -> str:\n    return arabic if language == "ar" else english\n\n\ndef watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKeyboardMarkup:
+def _label(language: str, english: str, arabic: str) -> str:
+    return arabic if language == "ar" else english
+
+
+def watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text=f"✖ {row.symbol.upper()}", callback_data=f"wl:del:{row.id}")]
         for row in rows
