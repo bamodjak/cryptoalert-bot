@@ -86,10 +86,14 @@ def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
     asyncio.run(cmd_start(message, command, object()))
 
     get_user.assert_awaited_once()
-    message.answer.assert_awaited_once()
-    args, kwargs = message.answer.await_args
-    assert args[0] == welcome_text("en")
-    assert kwargs["reply_markup"] is not None
+    message.answer.assert_awaited()
+    assert message.answer.await_count == 2
+    welcome_args, welcome_kwargs = message.answer.await_args_list[0]
+    assert welcome_args[0] == welcome_text("en")
+    assert welcome_kwargs["reply_markup"] is not None
+    menu_args, menu_kwargs = message.answer.await_args_list[1]
+    assert "Quick actions" in menu_args[0]
+    assert menu_kwargs["reply_markup"].is_persistent is True
 
 
 

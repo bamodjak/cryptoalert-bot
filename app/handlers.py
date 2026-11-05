@@ -12,8 +12,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     LabeledPrice,
     Message,
+    ReplyKeyboardMarkup,
     PreCheckoutQuery,
 )
 from redis.asyncio import Redis
@@ -88,6 +90,20 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
     rows.append([InlineKeyboardButton(text=tr(lang, "language"), callback_data="lang:choose")])
     rows.append([InlineKeyboardButton(text=tr(lang, "share"), url=share_url)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
+    """A compact Telegram reply keyboard that remains visible below the chat composer."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="/start"), KeyboardButton(text="/market"), KeyboardButton(text="/movers")],
+            [KeyboardButton(text="/price btc"), KeyboardButton(text="/alerts"), KeyboardButton(text="/premium")],
+            [KeyboardButton(text="/help")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Open Orbsat quick actions…",
+    )
 
 
 def alerts_keyboard(alerts: list[Alert], user_id: int, lang: str = "en") -> InlineKeyboardMarkup:
@@ -192,8 +208,10 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 "Your Premium access is attached to this Telegram account."
             )
             await m.answer(welcome_text(u.language) + premium_note, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+            await m.answer("Quick actions stay pinned below.", reply_markup=persistent_menu_keyboard())
             return
     await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+    await m.answer("Quick actions stay pinned below.", reply_markup=persistent_menu_keyboard())
 
 
 @router.message(Command("language"))
