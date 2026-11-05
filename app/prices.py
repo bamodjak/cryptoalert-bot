@@ -234,7 +234,7 @@ class PriceService:
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached CoinPaprika tickers")
 
-        rows = await self._paprika_tickers()
+        rows = await self._paprika_json("/tickers", {"quotes": "USD"})
         if isinstance(rows, list):
             await self.redis.set(cache_key, json.dumps(rows, separators=(",", ":")), ex=60)
             return rows
