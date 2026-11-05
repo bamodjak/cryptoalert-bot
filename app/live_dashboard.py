@@ -6,6 +6,7 @@ messages are coalesced to a safe refresh cadence rather than edited on every tic
 import asyncio
 import json
 import logging
+import math
 import time
 
 import aiohttp
@@ -17,6 +18,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import metrics
 from .db import User, Session
 from .assets import CORE_ASSETS
 from .i18n import tr
@@ -175,6 +177,7 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
     while not stop.is_set():
         try:
             async with http.ws_connect(url, heartbeat=20, receive_timeout=45, max_msg_size=2**20) as ws:
+                metrics.LIVE_STREAM_CONNECTED.set(1)
                 log.info("premium live-price trade stream connected")
                 async for message in ws:
                     if stop.is_set():
@@ -186,16 +189,20 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
                             if not coin:
                                 continue
                             price = float(event["p"])
-                            if price <= 0:
+                            if not math.isfinite(price) or price <= 0:
                                 continue
                             record_trade(str(event.get("s", "")), price)
+                            metrics.LIVE_TRADES_RECEIVED.inc()
                         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                             continue
                     elif message.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
                         break
         except asyncio.CancelledError:
+            metrics.LIVE_STREAM_CONNECTED.set(0)
             raise
         except Exception as exc:
+            metrics.LIVE_STREAM_CONNECTED.set(0)
+            metrics.LIVE_STREAM_RECONNECTS.inc()
             log.warning("live-price stream disconnected (%s); reconnecting", type(exc).__name__)
         try:
             await asyncio.wait_for(stop.wait(), timeout=2)
@@ -249,6 +256,7 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                             )
                             record["last_text"] = text
                             LAST_RENDERED_TEXT[user_key] = text
+                            metrics.LIVE_DASHBOARD_EDITS.inc()
                         except TelegramBadRequest as exc:
                             if "message is not modified" in str(exc).lower():
                                 record["last_text"] = text
@@ -261,6 +269,7 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                         except TelegramRetryAfter as exc:
                             await asyncio.sleep(min(float(exc.retry_after), 3.0))
                         except Exception:
+                            metrics.LIVE_DASHBOARD_EDIT_ERRORS.inc()
                             log.exception("could not update live dashboard for user")
                         await asyncio.sleep(0.05)
                     except (ValueError, TypeError, KeyError, json.JSONDecodeError):
@@ -314,6 +323,7 @@ async def live_runtime_loop(bot: Bot, redis: Redis, http: aiohttp.ClientSession,
                 pass
             continue
 
+        metrics.LIVE_RUNTIME_ACTIVE.set(1)
         log.info("live market runtime lease acquired")
         lost = asyncio.Event()
         renewal_task = asyncio.create_task(_renew_live_runtime_lease(lock, stop, lost))
@@ -327,10 +337,13 @@ async def live_runtime_loop(bot: Bot, redis: Redis, http: aiohttp.ClientSession,
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if lost_task in done and lost.is_set():
+                metrics.LIVE_RUNTIME_LEASE_LOSSES.inc()
                 log.error("stopping live workers after losing runtime lease")
             elif stop_task not in done and (stream_task in done or dashboard_task in done):
                 log.error("a live market worker stopped unexpectedly")
         finally:
+            metrics.LIVE_RUNTIME_ACTIVE.set(0)
+            metrics.LIVE_STREAM_CONNECTED.set(0)
             for task in (stream_task, dashboard_task, lost_task, stop_task, renewal_task):
                 if not task.done():
                     task.cancel()
