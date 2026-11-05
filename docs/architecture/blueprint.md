@@ -101,3 +101,13 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 
 - Prometheus metrics expose runtime lease ownership, WebSocket connection state, reconnects, received trades, dashboard edits, edit failures and lease-loss events.
 - The public `/health` response keeps dependency and alert-worker readiness checks, and adds non-sensitive `live_runtime_active` and `live_stream_connected` fields. A disconnected exchange stream remains observable without falsely marking the entire bot unavailable.
+
+## Current module map
+
+- `main.py` is the composition root: it creates infrastructure, registers routers, starts workers and exposes health/metrics endpoints.
+- `assets.py` is the dependency-light canonical asset registry; `prices.py` owns provider access and normalization.
+- `market_handlers.py` owns market and advisor Telegram routes; `market_views.py` owns provider-neutral market presentation.
+- `watchlists.py`, `preferences.py` and `live_dashboard.py` own their feature routers and workflows.
+- `keyboards.py` owns shared Telegram navigation and alert keyboards; `users.py` owns Telegram-user lifecycle synchronization.
+- `advisor.py` owns quantitative scoring, explanations and historical evaluation; `worker.py` owns scheduled alert evaluation.
+- `handlers.py` remains the compatibility/root router for alert creation and management, billing, referrals and legacy admin commands. New features should be added as dedicated feature modules and included from the composition root rather than expanding this file.
