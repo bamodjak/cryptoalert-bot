@@ -619,7 +619,8 @@ async def paid(m: Message, session: AsyncSession, redis: Redis):
     await session.commit()
     metrics.PAYMENTS.inc()
     await m.answer(
-        tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d")),
+        tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d"))
+        + premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")),
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
