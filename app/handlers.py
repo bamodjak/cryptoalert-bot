@@ -80,7 +80,7 @@ async def cmd_admin(m: Message):
 
 
 @router.message(CommandStart())
-async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, redis: Redis):
+async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user, command.args)
     start_args = command.args or ""
     if start_args.startswith("invite_"):
@@ -118,7 +118,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, r
 
 
 @router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
-async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService, redis: Redis):
+async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService, redis: Redis | None = None):
     """Handle visible quick-action labels without requiring slash-command syntax."""
     u = await get_user(session, m.from_user)
     action_label = (m.text or "").strip()
@@ -159,7 +159,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         if u.id == settings.owner_id:
             await m.answer(tr(u.language, "premium_owner"))
             return
-        price, days = await get_offer(redis)
+        price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
         status = premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")) if u.is_premium and u.premium_until else ""
         await m.answer(premium_copy(u.language, price, days) + status, reply_markup=premium_keyboard(u.language))
 
