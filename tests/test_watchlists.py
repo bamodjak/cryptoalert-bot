@@ -83,3 +83,85 @@ def test_custom_asset_search_keyboard_is_localized():
 
     keyboard = custom_asset_search_keyboard([{"id": "bitcoin", "name": "Bitcoin", "symbol": "btc"}], "ar")
     assert keyboard.inline_keyboard[-1][0].text == "✖ إلغاء"
+
+
+def test_custom_asset_search_returns_matching_assets_for_selection(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.watchlists as watchlists
+
+    async def scenario():
+        user = SimpleNamespace(id=42, language="en", is_premium=True)
+        monkeypatch.setattr(watchlists, "get_user", AsyncMock(return_value=user))
+        prices = SimpleNamespace(_get=AsyncMock(return_value={
+            "coins": [
+                {"id": "render-token", "name": "Render", "symbol": "rndr"},
+                {"id": "render-network", "name": "Render Network", "symbol": "render"},
+            ]
+        }))
+        state = SimpleNamespace(update_data=AsyncMock())
+        message = SimpleNamespace(
+            text="Render", from_user=SimpleNamespace(id=42), answer=AsyncMock()
+        )
+
+        await watchlists.receive_custom_asset_search(message, None, prices, state)
+
+        prices._get.assert_awaited_once_with("/search", {"query": "Render"})
+        state.update_data.assert_awaited_once()
+        results = state.update_data.await_args.kwargs["custom_asset_results"]
+        assert [item["id"] for item in results] == ["render-token", "render-network"]
+        markup = message.answer.await_args.kwargs["reply_markup"]
+        callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+        assert callbacks == ["wl:custompick:0", "wl:custompick:1", "wl:customcancel"]
+
+    asyncio.run(scenario())
+
+
+def test_custom_asset_pick_verifies_quote_before_adding(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.watchlists as watchlists
+
+    async def scenario():
+        user = SimpleNamespace(id=42, language="en", is_premium=True)
+        monkeypatch.setattr(watchlists, "get_user", AsyncMock(return_value=user))
+        monkeypatch.setattr(
+            watchlists, "render_watchlist",
+            AsyncMock(return_value=("Watchlist · 1/10", watchlist_keyboard([]))),
+        )
+        session = SimpleNamespace(
+            scalar=AsyncMock(return_value=user),
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),
+            execute=AsyncMock(), flush=AsyncMock(),
+        )
+        prices = SimpleNamespace(
+            _get=AsyncMock(return_value={"id": "render-token", "name": "Render", "symbol": "rndr"}),
+            prices=AsyncMock(return_value={"render-token": 3.25}),
+        )
+        state = SimpleNamespace(
+            get_data=AsyncMock(return_value={
+                "custom_asset_results": [{"id": "render-token", "name": "Render", "symbol": "rndr"}]
+            }),
+            clear=AsyncMock(),
+        )
+        message = SimpleNamespace(answer=AsyncMock())
+        callback = SimpleNamespace(
+            data="wl:custompick:0", from_user=SimpleNamespace(id=42),
+            message=message, answer=AsyncMock(),
+        )
+
+        await watchlists.cb_custom_asset_pick(callback, session, prices, state)
+
+        callback.answer.assert_awaited_once()
+        prices._get.assert_awaited_once()
+        prices.prices.assert_awaited_once_with(["render-token"])
+        session.execute.assert_awaited_once()
+        session.flush.assert_awaited_once()
+        state.clear.assert_awaited_once()
+        assert "Verified and added" in message.answer.await_args.args[0]
+
+    asyncio.run(scenario())
