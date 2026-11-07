@@ -101,3 +101,38 @@ def test_admin_offer_price_action_starts_a_scoped_edit_prompt(monkeypatch):
         assert "Stars" in message.answer.await_args.args[0]
 
     asyncio.run(scenario())
+
+
+def test_admin_offer_value_is_saved_and_audited():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    import app.handlers as handlers
+
+    class Redis:
+        def __init__(self):
+            self.values = {"admin:offer:input:77": "price"}
+        async def get(self, key):
+            return self.values.get(key)
+        async def set(self, key, value):
+            self.values[key] = str(value)
+        async def delete(self, key):
+            self.values.pop(key, None)
+        async def mget(self, keys):
+            return [self.values.get(key) for key in keys]
+
+    async def scenario():
+        redis = Redis()
+        session = SimpleNamespace(add=MagicMock(), commit=AsyncMock())
+        message = SimpleNamespace(
+            from_user=SimpleNamespace(id=77), text="2200", answer=AsyncMock(),
+        )
+        await handlers.save_offer_edit(message, redis, session)
+        assert await handlers.get_offer(redis) == (2200, handlers.settings.premium_days)
+        session.add.assert_called_once()
+        assert session.add.call_args.args[0].action == "premium_offer_update"
+        assert session.add.call_args.args[0].details == "price=2200"
+        session.commit.assert_awaited_once()
+        assert "2200 Stars" in message.answer.await_args.args[0]
+
+    asyncio.run(scenario())
