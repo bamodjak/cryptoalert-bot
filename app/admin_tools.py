@@ -163,17 +163,28 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
 
 
-@router.callback_query(F.data == "admin:payments:pending")
+@router.callback_query(F.data.regexp(r"^admin:payments:pending(?::\\d+)?$"))
 async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
+    try:
+        page = int((cb.data or "admin:payments:pending").rsplit(":", 1)[1]) if (cb.data or "").count(":") == 3 else 0
+    except ValueError:
+        await cb.answer("Invalid payment page.", show_alert=True)
+        return
+    if not cb.message:
+        await cb.answer()
+        return
+    total = await session.scalar(
+        select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")
+    ) or 0
+    page_count = max(1, (total + 9) // 10)
+    page = max(0, min(page, page_count - 1))
     rows = list((await session.scalars(
         select(ManualPayment)
         .where(ManualPayment.status == "pending")
         .order_by(ManualPayment.created_at.asc(), ManualPayment.id.asc())
+        .offset(page * 10)
         .limit(10)
     )).all())
-    if not cb.message:
-        await cb.answer()
-        return
     if not rows:
         await edit_message_if_changed(
             cb.message,
@@ -185,7 +196,11 @@ async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
         await cb.answer()
         return
     buttons = []
-    lines = ["<b>Pending manual payments</b>", "Review each payment before granting Premium."]
+    lines = [
+        "<b>Pending manual payments</b>",
+        f"Page {page + 1}/{page_count} · {total} pending record(s)",
+        "Review each payment before granting Premium.",
+    ]
     for payment in rows:
         lines.append(
             f"\n<b>#{payment.id}</b> · user <code>{payment.user_id}</code>\n"
@@ -196,6 +211,13 @@ async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
             InlineKeyboardButton(text=f"Verify #{payment.id}", callback_data=f"admin:manualpay:verify:{payment.id}"),
             InlineKeyboardButton(text=f"Reject #{payment.id}", callback_data=f"admin:manualpay:reject:{payment.id}"),
         ])
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(text="◀️ Previous", callback_data=f"admin:payments:pending:{page - 1}"))
+    if page + 1 < page_count:
+        navigation.append(InlineKeyboardButton(text="Next ▶️", callback_data=f"admin:payments:pending:{page + 1}"))
+    if navigation:
+        buttons.append(navigation)
     buttons.append([InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")])
     await edit_message_if_changed(
         cb.message, "\n".join(lines),
