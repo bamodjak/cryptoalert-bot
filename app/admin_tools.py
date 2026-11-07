@@ -204,7 +204,7 @@ async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("admin:manualpay:"))
+@router.callback_query(F.data.regexp(r"^admin:manualpay:(verify|reject):"))
 async def request_manual_payment_decision(cb: CallbackQuery):
     try:
         _, _, action, raw_id = (cb.data or "").split(":")
