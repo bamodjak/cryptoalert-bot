@@ -163,6 +163,139 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
 
 
+@router.callback_query(F.data == "admin:payments:pending")
+async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
+    rows = list((await session.scalars(
+        select(ManualPayment)
+        .where(ManualPayment.status == "pending")
+        .order_by(ManualPayment.created_at.asc(), ManualPayment.id.asc())
+        .limit(10)
+    )).all())
+    if not cb.message:
+        await cb.answer()
+        return
+    if not rows:
+        await edit_message_if_changed(
+            cb.message,
+            "No pending manual payments.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")
+            ]]),
+        )
+        await cb.answer()
+        return
+    buttons = []
+    lines = ["<b>Pending manual payments</b>", "Review each payment before granting Premium."]
+    for payment in rows:
+        lines.append(
+            f"\n<b>#{payment.id}</b> · user <code>{payment.user_id}</code>\n"
+            f"{html.escape(payment.method)} · {html.escape(str(payment.amount))} "
+            f"{html.escape(payment.currency)} · {payment.premium_days} days"
+        )
+        buttons.append([
+            InlineKeyboardButton(text=f"Verify #{payment.id}", callback_data=f"admin:manualpay:verify:{payment.id}"),
+            InlineKeyboardButton(text=f"Reject #{payment.id}", callback_data=f"admin:manualpay:reject:{payment.id}"),
+        ])
+    buttons.append([InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")])
+    await edit_message_if_changed(
+        cb.message, "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("admin:manualpay:"))
+async def request_manual_payment_decision(cb: CallbackQuery):
+    try:
+        _, _, action, raw_id = (cb.data or "").split(":")
+        payment_id = int(raw_id)
+        if action not in {"verify", "reject"} or payment_id <= 0:
+            raise ValueError
+    except ValueError:
+        await cb.answer("Invalid payment action.", show_alert=True)
+        return
+    if not cb.message:
+        await cb.answer("Payment review unavailable.", show_alert=True)
+        return
+    verb = "verify and grant Premium" if action == "verify" else "reject without granting Premium"
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Confirm", callback_data=f"admin:manualpay:confirm:{action}:{payment_id}")],
+        [InlineKeyboardButton(text="Cancel", callback_data="admin:payments:pending")],
+    ])
+    await cb.message.answer(
+        f"Confirm payment #{payment_id}: {verb}? This decision will be recorded in the admin audit log.",
+        reply_markup=markup,
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("admin:manualpay:confirm:"))
+async def confirm_manual_payment_decision(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+    try:
+        _, _, _, action, raw_id = (cb.data or "").split(":")
+        payment_id = int(raw_id)
+        if action not in {"verify", "reject"} or payment_id <= 0:
+            raise ValueError
+    except ValueError:
+        await cb.answer("Invalid payment action.", show_alert=True)
+        return
+    payment = await session.scalar(
+        select(ManualPayment).where(ManualPayment.id == payment_id).with_for_update()
+    )
+    if payment is None or payment.status != "pending":
+        await cb.answer("Payment is no longer pending.", show_alert=True)
+        return
+    user = await session.scalar(
+        select(User).where(User.id == payment.user_id).with_for_update()
+    )
+    if action == "verify" and user is None:
+        await cb.answer("User record missing; payment remains pending.", show_alert=True)
+        return
+    payment.verified_by = cb.from_user.id
+    payment.verified_at = utcnow()
+    if action == "verify":
+        payment.status = "verified"
+        user.premium_until = premium_base(user) + timedelta(days=payment.premium_days)
+        session.add(PremiumGrant(
+            user_id=user.id,
+            granted_by=cb.from_user.id,
+            days=payment.premium_days,
+            reason=f"manual payment #{payment.id}",
+        ))
+        await audit(
+            session, cb.from_user.id, "manual_payment_verified", user.id,
+            f"payment_id={payment.id}; method={payment.method}; amount={payment.amount} {payment.currency}",
+        )
+    else:
+        payment.status = "rejected"
+        await audit(
+            session, cb.from_user.id, "manual_payment_rejected", payment.user_id,
+            f"payment_id={payment.id}",
+        )
+    await session.commit()
+    result = (
+        f"Payment #{payment.id} verified. Premium granted to {user.id} for {payment.premium_days} days."
+        if action == "verify"
+        else f"Payment #{payment.id} rejected. No Premium was granted."
+    )
+    if cb.message:
+        await edit_message_if_changed(
+            cb.message, result,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Pending payments", callback_data="admin:payments:pending")
+            ]]),
+        )
+    await cb.answer("Payment decision recorded.")
+    if action == "verify":
+        try:
+            await bot.send_message(
+                user.id,
+                f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.",
+            )
+        except Exception:
+            pass
+
+
 @router.message(Command("pendingpay"))
 async def pending_payments_cmd(m: Message, session: AsyncSession):
     rows = (await session.scalars(
