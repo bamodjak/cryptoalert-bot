@@ -63,6 +63,7 @@ def test_admin_panel_exposes_premium_offer_controls(monkeypatch):
     import app.handlers as handlers
 
     async def scenario():
+        monkeypatch.setattr(handlers.settings, "admin_id_set", frozenset({1}), raising=False)
         monkeypatch.setattr(handlers, "get_offer", AsyncMock(return_value=(1800, 45)))
         redis = SimpleNamespace(set=AsyncMock())
         message = SimpleNamespace(edit_text=AsyncMock())
@@ -88,6 +89,7 @@ def test_admin_offer_price_action_starts_a_scoped_edit_prompt():
     import app.handlers as handlers
 
     async def scenario():
+        monkeypatch.setattr(handlers.settings, "admin_id_set", frozenset({77}), raising=False)
         redis = SimpleNamespace(set=AsyncMock())
         message = SimpleNamespace(answer=AsyncMock())
         callback = SimpleNamespace(
