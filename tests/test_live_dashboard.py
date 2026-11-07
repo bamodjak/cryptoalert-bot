@@ -162,7 +162,7 @@ def test_live_dashboard_navigation_rejects_free_users():
 def test_main_navigation_exposes_live_market_in_both_languages(monkeypatch):
     from app.keyboards import nav_keyboard
 
-    for language, expected in (("en", "📡 Live Market"), ("ar", "📡 السوق المباشر")):
+    for language, expected in (("en", "📡 Live Market · Premium"), ("ar", "📡 السوق المباشر · بريميوم")):
         markup = nav_keyboard(-123456789, lang=language)
         buttons = [button for row in markup.inline_keyboard for button in row]
         live = next(button for button in buttons if button.callback_data == "live:open")
