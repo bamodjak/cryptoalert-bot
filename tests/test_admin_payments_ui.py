@@ -157,7 +157,7 @@ def test_verify_command_logs_notification_failure_after_committing_payment(caplo
     assert "could not notify user 45 after manual payment verification via /verify" in caplog.text
 
 
-def test_premium_offer_numeric_input_handler_matches_plain_integer_messages():
+def test_premium_offer_input_handler_receives_text_for_explicit_validation():
     from app.handlers import admin
 
     handler = next(
@@ -167,4 +167,4 @@ def test_premium_offer_numeric_input_handler_matches_plain_integer_messages():
     magic = handler.filters[0].magic
     assert magic.resolve(SimpleNamespace(text="150")) is not None
     assert magic.resolve(SimpleNamespace(text="100000")) is not None
-    assert magic.resolve(SimpleNamespace(text="150x")) is None
+    assert magic.resolve(SimpleNamespace(text="150x")) is not None
