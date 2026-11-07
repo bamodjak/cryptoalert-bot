@@ -164,3 +164,29 @@ def test_docker_healthcheck_uses_render_runtime_port():
 
     assert "os.getenv('PORT', '8080')" in content
     assert "127.0.0.1:8080/health" not in content
+
+
+
+def test_read_only_operations_dashboard_is_served_without_embedded_credentials():
+    async def run():
+        app = main.build_web_app(FakeRedis())
+        route = next(route for route in app.router.routes() if route.method == "GET" and route.resource.canonical == "/dashboard")
+        response = await route.handler(None)
+        return response
+
+    response = asyncio.run(run())
+    assert response.status == 200
+    assert "Orbsat · Operations" in response.text
+    assert "METRICS_TOKEN" in response.text
+    assert "localStorage" not in response.text
+    assert "/stats.json" in response.text
+
+
+def test_operations_stats_endpoint_rejects_requests_without_bearer_token():
+    async def run():
+        app = main.build_web_app(FakeRedis())
+        route = next(route for route in app.router.routes() if route.method == "GET" and route.resource.canonical == "/stats.json")
+        return await route.handler(type("Request", (), {"headers": {}})())
+
+    response = asyncio.run(run())
+    assert response.status == 404
