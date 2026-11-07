@@ -1,29 +1,25 @@
-# Adding a cryptocurrency to ORBSAT
+# Adding a custom cryptocurrency to ORBSAT
 
-Premium members can request a new asset for the curated market views. Use the steps below so the symbol resolves to the correct asset and market-data provider ID.
+Premium members can add a custom asset to their personal Watchlist without leaving Telegram. ORBSAT searches CoinGecko, lets the user choose the exact project, verifies the asset metadata and current USD quote, and then adds it to the Watchlist.
 
-## 1. Find the canonical asset
+## Steps in Telegram
 
-1. Open [CoinGecko](https://www.coingecko.com/en/coins).
-2. Search for the exact project name (not just its ticker).
-3. Open the asset page and copy its CoinGecko ID from the URL. For example, the Bitcoin page URL ends in `/coins/bitcoin`, so its ID is `bitcoin`.
-4. Check the ticker and project name against the project's official website. Tickers are not unique.
+1. Open **Watchlist** from the main menu or send `/watchlist`.
+2. Tap **Add custom asset (Premium)**.
+3. Type the project or coin name (for example, `Render`, `Arbitrum` or `Solana`). A ticker also works when it returns useful matches.
+4. Review the result buttons carefully. Coin tickers are not unique; choose the matching project name and ticker, not just the first familiar symbol.
+5. ORBSAT checks the selected CoinGecko asset metadata and current USD quote before adding it. If verification fails, choose another result or try again later.
 
-## 2. Check that ORBSAT can resolve it
+## Limits and recovery
 
-1. In your private chat with ORBSAT, send `/price TICKER` (replace TICKER with the asset symbol).
-2. Confirm the returned name matches the intended project.
-3. If it resolves to a different asset, do not add it. Send the official CoinGecko asset link to support for review.
+- The Watchlist holds up to 10 assets total. Custom assets use one of those slots; Premium does not increase the cap.
+- Duplicate assets are not added twice.
+- If the Watchlist is full, remove an existing item before adding another.
+- Use `/cancel` or the **Cancel** button to leave the search flow. You can reopen Watchlist at any time.
+- Search and quote providers can be rate-limited or temporarily unavailable. A failed verification does not add an unverified asset.
 
-## 3. Add it to your Watchlist
+## Scope
 
-1. Open **Watchlist** from the bot menu or send `/watchlist`.
-2. Tap **Add asset** and select the matching asset if it appears.
-3. Confirm that the name and price are correct.
+A personal Watchlist entry does not automatically add an asset to the Premium Live Market or quantitative research universe. Those curated feeds require separate provider mapping, data-quality checks and validation before release.
 
-Useful links:
-- [CoinGecko asset directory](https://www.coingecko.com/en/coins)
-- [CoinMarketCap cryptocurrency directory](https://coinmarketcap.com/all/views/all/)
-- [ORBSAT bot help](https://t.me/orbsat16bot)
-
-**Important:** A Watchlist entry does not automatically add an asset to the Premium Live Market or signal universe. Those curated feeds require a provider mapping and validation before release. Never submit seed phrases, private keys, exchange API secrets, or wallet credentials.
+Never submit seed phrases, private keys, exchange API secrets or wallet credentials to the bot.
