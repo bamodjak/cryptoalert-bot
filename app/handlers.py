@@ -109,7 +109,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
             )
             return
     welcome = welcome_text(u.language)
-    if u.is_premium and u.premium_until:
+    if getattr(u, "is_premium", False) and getattr(u, "premium_until", None):
         welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     await m.answer(
         welcome,
