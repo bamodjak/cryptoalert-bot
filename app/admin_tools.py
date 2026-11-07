@@ -18,6 +18,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from redis.asyncio import Redis
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
@@ -73,7 +74,7 @@ async def grant_cmd(m: Message, command: CommandObject, session: AsyncSession):
     if days < 1 or days > 3650:
         await m.answer("Days must be between 1 and 3650.")
         return
-    user = await session.get(User, user_id)
+    user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if not user:
         await m.answer("User not found. They must start the bot first.")
         return
@@ -81,6 +82,7 @@ async def grant_cmd(m: Message, command: CommandObject, session: AsyncSession):
     user.premium_until = premium_base(user) + timedelta(days=days)
     session.add(PremiumGrant(user_id=user_id, granted_by=m.from_user.id, days=days, reason=reason[:256]))
     await audit(session, m.from_user.id, "premium_grant", user_id, f"days={days}; reason={reason[:200]}")
+    await session.commit()
     await m.answer(f"Granted {days} Premium days to {user_id}; expiry {user.premium_until:%Y-%m-%d} UTC.")
 
 
@@ -93,13 +95,14 @@ async def set_suspension(m: Message, session: AsyncSession, suspended: bool, arg
     if user_id in settings.admin_id_set:
         await m.answer("Administrator accounts cannot be suspended with this command.")
         return
-    user = await session.get(User, user_id)
+    user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if not user:
         await m.answer("User not found.")
         return
     user.suspended = suspended
     reason = parts[1][:200] if len(parts) > 1 else ""
     await audit(session, m.from_user.id, "suspend" if suspended else "unsuspend", user_id, reason)
+    await session.commit()
     await m.answer(f"User {user_id} {'suspended' if suspended else 'restored'}.")
 
 
@@ -160,8 +163,14 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
         currency=currency, premium_days=days, reference=reference, status="pending"
     )
     session.add(payment)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        await m.answer("That payment reference was already recorded. Check the existing record before retrying.")
+        return
     await audit(session, m.from_user.id, "manual_payment_pending", user_id, f"payment_id={payment.id}; method={method}; amount={amount} {currency}")
+    await session.commit()
     await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
 
 
