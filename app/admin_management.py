@@ -45,6 +45,13 @@ def _grant_user_button(user: User) -> InlineKeyboardButton:
     )
 
 
+def _access_button(user: User) -> InlineKeyboardButton:
+    """Build a contextual suspend/restore action for a registered account."""
+    if user.suspended:
+        return InlineKeyboardButton(text="🔓 Restore access", callback_data=f"um:access:{user.id}:restore")
+    return InlineKeyboardButton(text="🔒 Suspend access", callback_data=f"um:access:{user.id}:suspend")
+
+
 async def _premium_kind(session: AsyncSession, u: User) -> str:
     now = utcnow()
     if u.id == settings.owner_id:
@@ -116,7 +123,7 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
     title = {"all": "All registered users", "premium": "Premium users", "free": "Free users"}[mode]
     text = f"<b>👥 {title}</b>\nTotal: {total} · Page {page + 1}/{page_count}\n\n" + ("\n\n".join(cards) if cards else "No users on this page.")
     rows = [
-        [_grant_user_button(u)]
+        [_grant_user_button(u), _access_button(u)]
         for u in users
     ]
     if page > 0 or page + 1 < page_count:
@@ -268,6 +275,85 @@ async def page_users(cb: CallbackQuery, session: AsyncSession):
     await _show_users(cb, session, page_num, mode)
 
 
+@router.callback_query(F.data.startswith("um:access:"))
+async def request_access_change(cb: CallbackQuery, session: AsyncSession):
+    try:
+        _, _, raw_uid, action = (cb.data or "").split(":")
+        user_id = int(raw_uid)
+        if action not in {"suspend", "restore"}:
+            raise ValueError
+    except ValueError:
+        await cb.answer("Invalid access action.", show_alert=True)
+        return
+    if user_id in settings.admin_id_set:
+        await cb.answer("Administrator accounts cannot be changed here.", show_alert=True)
+        return
+    user = await session.get(User, user_id)
+    if user is None:
+        await cb.answer("User not found.", show_alert=True)
+        return
+    target_state = action == "suspend"
+    if user.suspended == target_state:
+        await cb.answer("Account already has that access state.", show_alert=True)
+        return
+    verb = "suspend" if target_state else "restore"
+    markup = _kb([
+        [InlineKeyboardButton(text=f"Confirm {verb}", callback_data=f"um:accessconfirm:{user_id}:{action}")],
+        [InlineKeyboardButton(text="Cancel", callback_data="admin:users")],
+    ])
+    if cb.message:
+        await cb.message.answer(
+            f"Confirm {verb} access for Telegram user <code>{user_id}</code>? "
+            "This does not delete the account or its data.",
+            reply_markup=markup,
+        )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("um:accessconfirm:"))
+async def confirm_access_change(cb: CallbackQuery, session: AsyncSession):
+    try:
+        _, _, raw_uid, action = (cb.data or "").split(":")
+        user_id = int(raw_uid)
+        if action not in {"suspend", "restore"}:
+            raise ValueError
+    except ValueError:
+        await cb.answer("Invalid access action.", show_alert=True)
+        return
+    if user_id in settings.admin_id_set:
+        await cb.answer("Administrator accounts cannot be changed here.", show_alert=True)
+        return
+    user = await session.scalar(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    if user is None:
+        await cb.answer("User not found.", show_alert=True)
+        return
+    target_state = action == "suspend"
+    if user.suspended == target_state:
+        await cb.answer("Account already has that access state.", show_alert=True)
+        return
+    user.suspended = target_state
+    session.add(AdminAudit(
+        admin_id=cb.from_user.id,
+        action="suspend" if target_state else "unsuspend",
+        target_user_id=user_id,
+        details="admin user-management panel",
+    ))
+    await session.commit()
+    verb = "suspended" if target_state else "restored"
+    if cb.message:
+        await edit_message_if_changed(
+            cb.message,
+            f"User <code>{user_id}</code> access {verb}. Account data and Premium history were preserved.",
+            reply_markup=_kb([
+                [InlineKeyboardButton(text="👥 Back to Users", callback_data="admin:users")],
+                _back(),
+            ]),
+        )
+    await cb.answer("Access updated.")
+
+
 @router.callback_query(F.data == "um:find")
 async def start_find(cb: CallbackQuery, redis: Redis):
     await _set_flow(redis, cb.from_user.id, {"state": "find"})
@@ -320,7 +406,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
         cards = []
         for u in users:
             cards.append(await _user_card(session, u))
-            rows.append([_grant_user_button(u)])
+            rows.append([_grant_user_button(u), _access_button(u)])
         rows.append(_back())
         await m.answer(
             "<b>Search results</b>\nChoose an account to grant Premium:",
