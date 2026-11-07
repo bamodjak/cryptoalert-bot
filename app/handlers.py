@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics
 from .config import settings
+from .offer import get_offer, set_offer_value
 from .db import AdminAudit, Alert, ManualPayment, Payment, PremiumInvite, User, utcnow
 from .entitlements import premium_payment_matches_offer, refundable_unused_duration
 from .middlewares import KILL_KEY
@@ -55,6 +56,7 @@ async def cmd_admin(m: Message):
     """Open the private admin panel for configured administrators only."""
     rows = [
         [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+        [InlineKeyboardButton(text="⚙️ Premium pricing & duration", callback_data="admin:offer")],
         [
             InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
             InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
@@ -295,10 +297,19 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         return
 
     action = (cb.data or "").split(":", 1)[1]
-    if action == "panel":
+    if action == "offer":
+        price, days = await get_offer(redis)
+        text = f"<b>⚙️ Premium offer settings</b>\\nCurrent price: <b>{price} Stars</b>\\nPremium duration: <b>{days} days</b>\\n\\nChoose a value to edit. Changes affect new invoices; existing invoices retain their quoted amount and duration."
+        rows = [
+            [InlineKeyboardButton(text="💫 Change Stars price", callback_data="admin:offer:set:price")],
+            [InlineKeyboardButton(text="📅 Change Premium days", callback_data="admin:offer:set:days")],
+            [InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")],
+        ]
+    elif action == "panel":
         text = "<b>🛡 Admin Panel</b>\nChoose an action:"
         rows = [
             [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="⚙️ Premium pricing & duration", callback_data="admin:offer")],
             [
                 InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
                 InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
@@ -424,6 +435,49 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
                 raise
     await cb.answer()
 
+
+@admin.callback_query(F.data.regexp(r"^admin:offer:set:(price|days)$"))
+async def begin_offer_edit(cb: CallbackQuery, redis: Redis):
+    field = (cb.data or "").rsplit(":", 1)[-1]
+    await redis.set(f"admin:offer:input:{cb.from_user.id}", field, ex=600)
+    prompt = "Send the new price in Telegram Stars (1–100000)." if field == "price" else "Send the Premium duration in days (1–3650)."
+    if cb.message:
+        await cb.message.answer(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Cancel", callback_data="admin:offer:cancel")
+        ]]))
+    await cb.answer()
+
+
+@admin.callback_query(F.data == "admin:offer:cancel")
+async def cancel_offer_edit(cb: CallbackQuery, redis: Redis):
+    await redis.delete(f"admin:offer:input:{cb.from_user.id}")
+    if cb.message:
+        await cb.message.answer("Premium offer edit cancelled.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
+        ]]))
+    await cb.answer()
+
+
+@admin.message(F.text.regexp(r"^\\d{1,6}$"))
+async def save_offer_edit(message: Message, redis: Redis):
+    key = f"admin:offer:input:{message.from_user.id}"
+    field = await redis.get(key)
+    if field not in {"price", "days"}:
+        return
+    try:
+        price, days = await set_offer_value(redis, field, int(message.text))
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await redis.delete(key)
+    await message.answer(
+        f"Premium offer updated.\\nPrice: <b>{price} Stars</b>\\nDuration: <b>{days} days</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
+        ]]),
+    )
+
+
 # ---------- Payments (Telegram Stars) ----------
 
 def premium_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
@@ -456,20 +510,21 @@ async def cmd_premium(m: Message, session: AsyncSession):
 
 
 @router.callback_query(F.data == "premium:buy")
-async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot, redis: Redis):
     await cb.answer()
     u = await get_user(session, cb.from_user)
     if u.id == settings.owner_id:
         if cb.message:
             await edit_if_changed(cb.message, tr(u.language, "premium_owner"))
         return
+    price, days = await get_offer(redis)
     await bot.send_invoice(
         chat_id=cb.from_user.id,
-        title=tr(u.language, "premium_invoice_title", days=settings.premium_days),
-        description=tr(u.language, "premium_invoice_description", limit=settings.premium_alert_limit, days=settings.premium_days),
-        payload=f"premium:{settings.premium_days}",
+        title=tr(u.language, "premium_invoice_title", days=days),
+        description=tr(u.language, "premium_invoice_description", limit=settings.premium_alert_limit, days=days),
+        payload=f"premium:{days}:{price}",
         currency="XTR",
-        prices=[LabeledPrice(label=tr(u.language, "premium_label"), amount=settings.premium_price_stars)],
+        prices=[LabeledPrice(label=tr(u.language, "premium_label"), amount=price)],
     )
 
 
