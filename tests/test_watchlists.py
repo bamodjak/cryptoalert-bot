@@ -61,3 +61,25 @@ def test_watchlist_button_clarifies_custom_asset_is_premium():
     keyboard = watchlist_keyboard([])
     labels = [button.text for row in keyboard.inline_keyboard for button in row]
     assert "＋ Add custom asset (Premium)" in labels
+
+
+def test_custom_asset_search_keyboard_is_simple_and_selectable():
+    from app.watchlists import custom_asset_search_keyboard
+
+    results = [
+        {"id": "render-token", "name": "Render", "symbol": "rndr"},
+        {"id": "render-network", "name": "Render Network", "symbol": "render"},
+    ]
+    keyboard = custom_asset_search_keyboard(results, "en")
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    assert buttons[0].text == "Render · RNDR"
+    assert buttons[0].callback_data == "wl:custompick:0"
+    assert buttons[1].callback_data == "wl:custompick:1"
+    assert buttons[-1].callback_data == "wl:customcancel"
+
+
+def test_custom_asset_search_keyboard_is_localized():
+    from app.watchlists import custom_asset_search_keyboard
+
+    keyboard = custom_asset_search_keyboard([{"id": "bitcoin", "name": "Bitcoin", "symbol": "btc"}], "ar")
+    assert keyboard.inline_keyboard[-1][0].text == "✖ إلغاء"
