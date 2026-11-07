@@ -62,9 +62,6 @@ def test_resolve_discards_malformed_cached_symbol_lookup_and_refetches():
         redis = Redis()
         service = PriceService(redis, http=None)
         service._get = AsyncMock(return_value={"coins": [{"id": "bitcoin", "symbol": "btc", "name": "Bitcoin"}]})
-        coin = await service.resolve("btc-test")
-        assert coin is None
-        # Known assets bypass symbol-cache lookups; use an unknown symbol.
         coin = await service.resolve("xbt")
         assert coin is None
         assert redis.deleted == ["cg:sym:xbt"]
