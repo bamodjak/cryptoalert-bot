@@ -383,6 +383,7 @@ async def reject_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     payment.verified_by = m.from_user.id
     payment.verified_at = utcnow()
     await audit(session, m.from_user.id, "manual_payment_rejected", payment.user_id, f"payment_id={payment.id}")
+    await session.commit()
     await m.answer(f"Payment #{payment.id} rejected; no Premium granted.")
 
 
