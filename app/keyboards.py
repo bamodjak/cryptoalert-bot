@@ -44,7 +44,6 @@ def persistent_menu_keyboard(language: str = "en", show_back: bool = False) -> R
                 KeyboardButton(text=tr(language, "quick_premium"), style="success"),
             ],
         ]
-    ]
     if show_back:
         rows.append([KeyboardButton(text=tr(language, "back"), style="primary")])
     return ReplyKeyboardMarkup(
