@@ -554,7 +554,7 @@ def premium_copy(lang: str = "en", price: int | None = None, days: int | None = 
     return (
         tr(lang, "premium_title") + "\n\n"
         + tr(lang, "free_plan", free=settings.free_alert_limit) + "\n\n"
-        + tr(lang, "premium_plan", stars=price, days=days, premium=settings.premium_alert_limit)
+        + tr(lang, "premium_plan", stars=price, days=days, premium=settings.premium_alert_limit, free=settings.free_alert_limit)
         + "\n\n" + tr(lang, "pay_note")
     )
 
