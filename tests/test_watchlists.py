@@ -55,3 +55,9 @@ def test_watchlist_add_reports_temporary_market_lookup_failure():
         assert "temporarily" in callback.answer.await_args.args[0].lower() or "busy" in callback.answer.await_args.args[0].lower()
 
     asyncio.run(scenario())
+
+
+def test_watchlist_button_clarifies_custom_asset_is_premium():
+    keyboard = watchlist_keyboard([])
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "＋ Add custom asset (Premium)" in labels
