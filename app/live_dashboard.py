@@ -174,7 +174,11 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession, 
             await callback.answer(tr(user.language, "live_private_only"), show_alert=True)
             return
         if not user.is_premium or user.suspended:
-            await callback.answer(tr(user.language, "live_premium_only"), show_alert=True)
+            await callback.answer()
+            await callback.message.answer(
+                tr(user.language, "live_premium_only"),
+                reply_markup=live_exit_keyboard(user.language),
+            )
             return
         # Replace the user's registered dashboard with the new message. Older
         # dashboard buttons are rejected by the message-id check below.
