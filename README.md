@@ -50,35 +50,39 @@ The CI workflow checks Python compilation and imports, generates offline migrati
 1. In Telegram, open @BotFather → `/newbot` → copy the token.
 2. Get your own user id from @userinfobot (this is `ADMIN_IDS`).
 
-## 2. Production deployment (Render)
+## 2. Production deployment (Botkeep)
 
-The production deployment uses Render. Keep the Telegram bot, PostgreSQL and Redis connected through their private/internal service URLs.
+The current production host is **Botkeep**. The bot uses Telegram long polling by default; a public domain is not required for Telegram updates. The application also exposes HTTP health and operations endpoints.
 
-1. In Render, create a **Web Service** from this GitHub repository and select the `main` branch.
-2. Choose **Docker** as the runtime. The repository Dockerfile runs database migrations and starts the bot.
-3. Set the health-check path to `/health`. Render supplies the `PORT` environment variable; the application listens on it.
-4. Create or attach a PostgreSQL database and a Redis instance in the same Render region. Use their **internal** connection URLs.
-5. Configure the environment variables below. Keep credentials in Render's Environment settings, never in Git.
+1. In Botkeep, create an application from this GitHub repository and select the production branch used for the release.
+2. Select a Python runtime compatible with Python 3.12, or use the repository Dockerfile if choosing a Docker runtime.
+3. Set the startup command to:
+   ```bash
+   alembic upgrade head && python -m app.main
+   ```
+   Do not run a second copy of the bot against the same production database.
+4. Create PostgreSQL and Redis services in Botkeep. Copy their connection details from each service's Database tab into `DATABASE_URL` and `REDIS_URL`. Use the connection/TLS settings Botkeep supplies; do not assume local Docker service names.
+5. Add the application environment variables in Botkeep's **Environment** settings. Never commit secrets to Git.
+6. In the application's Network settings, use the assigned service port as `SERVER_PORT`. The app binds to `0.0.0.0`; `PORT` is also accepted for compatible hosts. Configure a Botkeep Domain only if you need public HTTPS access to the HTTP endpoints.
+7. Start the application and verify the actual runtime in **Console**. An accepted deployment operation alone does not prove the bot is ready.
 
 Required environment:
 - `BOT_TOKEN` — token from @BotFather.
 - `BOT_USERNAME` — Telegram username without the @.
 - `ADMIN_IDS` — comma-separated numeric Telegram user IDs.
 - `OWNER_ID` — owner's numeric Telegram user ID.
-- `DATABASE_URL` — Render PostgreSQL internal URL. The app normalizes standard PostgreSQL URLs for async SQLAlchemy.
-- `REDIS_URL` — Render Redis internal URL.
-- `POSTGRES_PASSWORD` is only needed for the Docker Compose self-hosted database; it is not used by the managed Render database.
+- `DATABASE_URL` — Botkeep PostgreSQL connection URL.
+- `REDIS_URL` — Botkeep Redis connection URL.
 
-Optional settings include `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`. Set a strong `METRICS_TOKEN` to enable `/dashboard`, `/stats.json` and `/metrics`; the dashboard asks for the token per session and does not persist it. Leave `WEBHOOK_BASE_URL` empty for the default polling mode. Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
+Optional settings include `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`. Set a strong `METRICS_TOKEN` to protect `/dashboard`, `/stats.json` and `/metrics`. Leave `WEBHOOK_BASE_URL` empty for the default polling mode. Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
 
 After deployment, verify:
-- `/` returns the service landing response.
-- `/dashboard` serves the read-only operations overview; enter the configured `METRICS_TOKEN` to load protected statistics.
-- `/health` returns HTTP 200 and reports Telegram transport and worker readiness.
-- The bot responds to `/start` in Telegram.
-- Render logs show successful database migrations, router registration and Telegram polling.
+- Botkeep Console shows the process running without repeated restarts or startup errors.
+- `/health` returns HTTP 200 after Telegram transport and the alert worker are ready; a 503 response means a dependency or readiness check has failed.
+- The bot responds to `/start` in Telegram and its core flows work.
+- Logs show successful database migrations, router registration and Telegram polling. Do not expose bot tokens, database URLs or user data in shared logs.
 
-Deploys from `main` are automatic. Database migrations run at container startup; take a database backup before deploying schema changes.
+Back up PostgreSQL from the Botkeep panel before deploying schema changes. Keep an independent backup copy. Check the live application after every deployment; a green platform status page does not verify an individual bot workload.
 
 ## 3. Self-host with Docker Compose (optional)
 
