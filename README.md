@@ -8,7 +8,7 @@
 - Main navigation includes a one-tap Premium live-market entry; free users receive the Premium gate, while eligible users open an auto-updating dashboard in the chat
 - Premium `/live` dashboard in Telegram chat with public trade-stream prices and automatic message updates (no Mini App)
 - Clear onboarding, a persistent color-coded Telegram quick-action keyboard (markets/movers, crypto prices/alerts, Premium/help), compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
-- Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
+- Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Premium quantitative signals, Ethereum gas alerts, and the in-chat live dashboard
 - Referral links and join counts, payment support, service terms and concise notification copy
 - Price feed uses CoinGecko with CoinPaprika fallback for supported assets; provider quotes are cached in Redis
 - `/prices` displays the top 33 assets by market capitalization with individual selection or a complete price list, 24-hour change, provider fallback and stale-data protection
@@ -20,14 +20,14 @@
 
 **Operations and safety**
 - PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint, Prometheus metrics and a token-gated read-only web operations dashboard at `/dashboard`
-- Admin-only user management with direct Premium grants and confirmation-gated suspend/restore controls; pending manual payments have an in-chat review queue with explicit verify/reject confirmation, audit logging and Premium activation only after verification; also includes giveaways, broadcast confirmation and kill switch
+- Admin-only user management with searchable user selection and direct Premium grants (no routine ID copy/paste), confirmation-gated suspend/restore controls, and editable Premium Stars price/duration from the Admin Panel; pending manual payments have an in-chat review queue with explicit verify/reject confirmation, audit logging and Premium activation only after verification; also includes giveaways, broadcast confirmation and kill switch
 - Admin overview reports registrations (including 7-day growth), Premium accounts, active alerts, suspended/blocked accounts, unrefunded Stars and pending manual payments
 - Anti-spam throttling and idempotent Telegram Stars payment handling
 - Market data can be delayed; the bot is informational and does not provide financial advice
 
 ### Telegram navigation notes
 
-The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); the inline dashboard includes Market Pulse, Top Movers, Live Market, Crypto Prices, Gas, Watchlist, Premium Signals, Alerts, Premium, Referrals, Help, Language and Settings. The Live Market entry is available in navigation but requires Premium to open. Each action is routed to a real handler, while slash commands remain available for compatibility. Administrative controls are shown only to configured admins. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
+Premium members receive an explicit membership/expiry banner and a summary of paid features on start, Dashboard and Premium screens. Premium Signals and Live Market entries are labelled as Premium features. The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); the inline dashboard includes Market Pulse, Top Movers, Live Market, Crypto Prices, Gas, Watchlist, Premium Signals, Alerts, Premium, Referrals, Help, Language and Settings. The Live Market entry is available in navigation but requires Premium to open. Each action is routed to a real handler, while slash commands remain available for compatibility. Administrative controls are shown only to configured admins. In Admin Panel → Premium pricing & duration, change the Stars price (1–100000) or entitlement duration (1–3650 days); values are stored in Redis and apply to new invoices. Existing invoices retain the exact quoted price and duration. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
 
 ## Admin tools
 
