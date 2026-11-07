@@ -120,7 +120,14 @@ async def cb_watchlist_add_custom(callback: CallbackQuery, session: AsyncSession
     await callback.answer()
 
 
-@router.message(CustomAssetInput.waiting_for_coingecko_id)
+@router.message(CustomAssetInput.waiting_for_coingecko_id, Command("cancel"))
+async def cancel_custom_asset_input(message: Message, state: FSMContext):
+    """Exit custom-asset entry explicitly instead of treating /cancel as an asset ID."""
+    await state.clear()
+    await message.answer("Custom asset entry cancelled. Use /watchlist to continue.")
+
+
+@router.message(CustomAssetInput.waiting_for_coingecko_id, F.text, ~F.text.startswith("/"))
 async def receive_custom_asset_id(message: Message, session: AsyncSession, prices: PriceService, state: FSMContext):
     user = await get_user(session, message.from_user)
     if not user.is_premium:
