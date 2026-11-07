@@ -104,6 +104,7 @@ def test_rejectpay_command_commits_rejection_and_audit():
         )
         session = SimpleNamespace(
             scalar=AsyncMock(return_value=payment),
+            add=MagicMock(),
             commit=AsyncMock(),
         )
         message = SimpleNamespace(
