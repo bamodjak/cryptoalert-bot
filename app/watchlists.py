@@ -97,9 +97,12 @@ async def cb_watchlist_add(callback: CallbackQuery, session: AsyncSession):
 async def cb_watchlist_add_asset(callback: CallbackQuery, session: AsyncSession, prices: PriceService):
     user = await get_user(session, callback.from_user)
     symbol = (callback.data or "").rsplit(":", 1)[-1].lower()
-    coin = await prices.resolve(symbol)
+    try:
+        coin = await prices.resolve(symbol)
+    except PriceError:
+        await callback.answer(tr(user.language, "price_busy"), show_alert=True)
+        return
     if coin is None:
-        user = await get_user(session, callback.from_user)
         await callback.answer(tr(user.language, "watchlist_unsupported"), show_alert=True)
         return
     # Serialize concurrent additions for this account before enforcing its cap.
