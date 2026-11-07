@@ -20,18 +20,143 @@
 
 **Operations and safety**
 - PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint, Prometheus metrics and a token-gated read-only web operations dashboard at `/dashboard`
-- Admin-only user management with searchable user selection and direct Premium grants (no routine ID copy/paste), confirmation-gated suspend/restore controls, and editable Premium Stars price/duration from the Admin Panel; pending manual payments have an in-chat review queue with explicit verify/reject confirmation, audit logging and Premium activation only after verification; admin grants and access changes are committed before success replies, concurrent grants lock the target account, and duplicate manual-payment references are handled as a recoverable validation error; also includes giveaways, broadcast confirmation and kill switch
+- Admin-only user management with searchable user selection and direct Premium grants (no routine ID copy/paste), confirmation-gated suspend/restore controls, and editable Premium Stars price/duration from the Admin Panel; pending manual payments have an in-chat review queue with explicit verify/reject confirmation, audit logging and Premium activation only after verification; also includes giveaways, broadcast confirmation and kill switch
 - Admin overview reports registrations (including 7-day growth), Premium accounts, active alerts, suspended/blocked accounts, unrefunded Stars and pending manual payments
 - Anti-spam throttling and idempotent Telegram Stars payment handling
 - Market data can be delayed; the bot is informational and does not provide financial advice
 
-### Product UX and Premium conversion
+### Telegram navigation notes
 
-The Telegram home dashboard keeps **Create Price Alert** as the primary first action and groups the remaining destinations into compact two-button rows for mobile screens. Welcome copy explains the first three steps, while Help is organized as a short beginner guide before listing optional commands. English and Arabic copy must remain aligned.
+Premium members receive an explicit membership/expiry banner and a summary of paid features on start, Dashboard and Premium screens. Premium Signals and Live Market entries are labelled as Premium features. The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); the inline dashboard includes Market Pulse, Top Movers, Live Market, Crypto Prices, Gas, Watchlist, Premium Signals, Alerts, Premium, Referrals, Help, Language and Settings. The Live Market entry is available in navigation but requires Premium to open. Each action is routed to a real handler, while slash commands remain available for compatibility. Administrative controls are shown only to configured admins. In Admin Panel → Premium pricing & duration, change the Stars price (1–100000) or entitlement duration (1–3650 days); values are stored in Redis and apply to new invoices. Existing invoices retain the exact quoted price and duration. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
 
-### CI validation
+## Admin tools
 
-The tests workflow runs on pushes to main and feature branches and on pull requests targeting main. Manual workflow dispatch is available after the workflow_dispatch trigger is present on the default branch. Commits created by GitHub App or API tokens may suppress follow-on workflow events; before merging, confirm that CI ran against the exact current PR head SHA. A prior green run for an older commit does not validate the current head.
+Set `OWNER_ID` to the owner's numeric Telegram user ID. Keep `ADMIN_IDS` limited to trusted numeric user IDs. The owner receives Premium without payment; other admins do not automatically receive it.
 
-- Premium custom Watchlist assets are now discoverable by typing a project or coin name in Telegram. The bot presents up to six matching CoinGecko results, lets the user choose one, verifies its metadata and current USD quote, then adds it within the existing 10-item cap. Users no longer need to leave Telegram to copy a CoinGecko ID. Search, result selection, verification errors, duplicates, full lists and cancellation are localized in English and Arabic.
-- The home/welcome screen reads the same runtime-edited Telegram Stars price and duration as the Premium invoice, including when users return through Home, Back, language selection or the persistent Dashboard key. This prevents stale offer details after an administrator changes the offer.
+Admin commands:
+- `/users [ID or username]` — find users
+- `/grant USER_ID DAYS [reason]` — grant Premium and record the grant
+- `/suspend USER_ID [reason]` / `/unsuspend USER_ID` — reversible access control with audit history
+- `/manualpay USER_ID METHOD AMOUNT CURRENCY DAYS [reference]` — record a pending payment (cash, in-person cash, Stars, BaridiMob, CCP, or bank transfer)
+- `/pendingpay` — list pending manual payments; `/verify PAYMENT_ID` / `/rejectpay PAYMENT_ID` — verify or reject pending manual payments
+- `/revenue` — show unrefunded Stars and verified manual totals by currency
+- `/refundpending` — list Stars refunds with an uncertain API result; `/refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED` records the outcome after checking Telegram
+- `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
+- `/broadcast announcement text` — preview and explicitly confirm before sending; alternatively reply to a Telegram message with `/broadcast` to copy its text or supported media to the registered, non-suspended audience
+
+The CI workflow checks Python compilation and imports, generates offline migration SQL, applies the complete Alembic chain to an ephemeral PostgreSQL 16 database, and runs unit tests. It does not test against your live database or Telegram. Back up an existing database before deploying schema changes. The bot logs Telegram button action labels and handler success/failure for troubleshooting, without logging user IDs or message contents. New Stars purchases are processed idempotently and record their Premium entitlement interval so refunds can reduce unused time without blindly deleting unrelated Premium time. Later tracked intervals are shifted when needed. Suspended users are blocked by update middleware and excluded from alert delivery and giveaway draws. Legacy payments created before this migration lack per-charge intervals; automated refunds are blocked for those records unless an admin explicitly uses `/refund CHARGE_ID ALLOW_LEGACY` after reviewing the account. That override leaves Premium expiry unchanged. Premium-only gas alerts and price alerts beyond the Free-plan allowance are paused when Premium expires, preserved in the account, and automatically unpaused when Premium returns. A Stars refund whose Telegram API result is ambiguous is marked pending reconciliation; do not retry it until the transaction has been checked.
+
+## 1. Create the bot
+1. In Telegram, open @BotFather → `/newbot` → copy the token.
+2. Get your own user id from @userinfobot (this is `ADMIN_IDS`).
+
+## 2. Production deployment (Botkeep)
+
+The supported Botkeep deployment uses its **Python application runtime** plus managed PostgreSQL and Redis services. The repository's Dockerfile is for Docker-based hosts; Botkeep's GitHub application workflow uses a Python runtime and an explicit start command.
+
+### Create the application
+
+1. In Botkeep, open **GitHub**, connect the repository if it is not already available, and select `bamodjak/cryptoalert-bot`.
+2. Select the `main` branch and the repository root as the project directory.
+3. Choose the Python runtime version compatible with the project (Python 3.12).
+4. Confirm that Botkeep detects `requirements.txt`. Set the start command to:
+   ```bash
+   python -m app.main
+   ```
+5. Configure the application to listen on `0.0.0.0`. Botkeep provides the HTTP port as `SERVER_PORT`; the application accepts that variable and retains `PORT` as a compatible alternative.
+6. Add the environment variables listed below in Botkeep's **Environment** settings. Do not commit a live `.env` file or credentials.
+
+### Provision the data services
+
+Create PostgreSQL and Redis from Botkeep's database/service profiles. They are separate workloads and consume resources from the account's shared allocation.
+
+- Use the connection details shown in each service's **Database** panel, including the correct host, port, database name and credentials.
+- Set `DATABASE_URL` to the PostgreSQL connection URL and `REDIS_URL` to the Redis connection URL. Use the TLS settings supplied by Botkeep when required.
+- The application converts standard `postgres://` and `postgresql://` URLs to the async SQLAlchemy driver format.
+- Keep independent backups of PostgreSQL data. Stop a database before creating or restoring a panel backup, and retain a copy outside Botkeep.
+
+### Application environment
+
+Required:
+- `BOT_TOKEN` — token from @BotFather.
+- `BOT_USERNAME` — Telegram username without the @.
+- `DATABASE_URL` — connection URL for the Botkeep PostgreSQL service.
+- `REDIS_URL` — connection URL for the Botkeep Redis service.
+
+Optional:
+- `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`.
+- Set a strong `METRICS_TOKEN` to enable protected statistics at `/dashboard`, `/stats.json` and `/metrics`. The dashboard asks for the token per session and does not persist it.
+- Leave `WEBHOOK_BASE_URL` empty to use Telegram long polling; this requires no public domain. For webhook mode, configure a public HTTPS domain, `WEBHOOK_BASE_URL`, `WEBHOOK_SECRET` and the matching `DOMAIN`.
+- Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
+
+### Deploy and verify
+
+Deploy the selected `main` revision from Botkeep's GitHub panel. Follow the deployment progress and inspect the application's **Console** and runtime state; an accepted deployment is not proof that the process is healthy.
+
+Verify:
+- The application process starts with `python -m app.main` and remains running.
+- `/` returns the service landing response when HTTP routing is configured.
+- `/health` returns HTTP 200 after Telegram polling or webhook transport, the alert worker, PostgreSQL and Redis are ready.
+- `/dashboard` serves the read-only operations overview; enter the configured `METRICS_TOKEN` to load protected statistics.
+- The bot responds to `/start` in Telegram.
+- Console output shows successful database migrations, router registration and Telegram transport startup.
+
+Alembic migrations run automatically when the application starts. Back up PostgreSQL before deploying schema changes. Botkeep's resource limits are shared across the application and database workloads; check allocation and runtime usage if startup, migrations or database operations fail.
+
+## 3. Self-host with Docker Compose (optional)
+
+For a separate self-managed installation, create `.env` from `.env.example`, set `BOT_TOKEN`, `ADMIN_IDS`, `OWNER_ID`, database credentials and other required values, then run:
+
+```bash
+cp .env.example .env
+# Edit .env and set strong unique credentials.
+docker compose up -d --build
+docker compose logs -f bot
+curl http://localhost:8080/health
+```
+
+Keep `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` identical. The Compose stack provides PostgreSQL and Redis. For webhook mode, configure a public HTTPS domain, `WEBHOOK_BASE_URL`, `WEBHOOK_SECRET` and `DOMAIN`, then start the optional Caddy profile:
+
+```bash
+docker compose --profile webhook up -d --build
+```
+
+## Operations
+- Update: `git pull && docker compose up -d --build` (migrations run automatically)
+- Pause everything instantly: send `/kill` to the bot; `/resume` to undo
+- Backup DB: `docker compose exec db pg_dump -U bot bot > backup.sql`
+- New migration after changing models: `docker compose run --rm bot alembic revision --autogenerate -m "msg"`
+- Tests: `pip install -r requirements.txt pytest && BOT_TOKEN=1:x pytest`
+
+## Selling it
+- Run it as your own product (Stars revenue), or white-label it per client: one `.env` + one compose stack per client.
+- Keep the "not financial advice" disclaimer. Never store or ask for users' keys or wallets.
+## Unified asset experience and user controls
+
+Orbsat uses a canonical core asset registry shared by the price service, watchlists, live dashboard and quantitative research universe. Top-33 and market-mover assets open a common detail view with contextual actions to create alerts, add to a watchlist and open research where available.
+
+Users can manage their preferred language, timezone and advanced presentation mode from /settings. Advanced mode reveals additional market-cap and 24-hour volume context when the provider supplies it. Alert management supports editing targets, one-hour snoozing, resuming and a recent triggered-alert history via /history.
+
+These features are implemented as a modular monolith. The application keeps one deployment and shared PostgreSQL/Redis infrastructure while separating domain concepts, application services, provider adapters, Telegram routers and background workers. See docs/architecture/blueprint.md for dependency rules and the staged migration plan.
+
+Database upgrades are additive. The alert snooze and user preference migrations preserve existing rows and values.
+
+The live trade stream and dashboard updater run under one Redis-elected runtime lease, keeping their in-memory quote state together during overlapping deployments.
+
+Users can independently enable or disable price-alert and gas-alert categories in `/settings`; disabled categories retain their configured alerts. Premium research screens show the rule drivers behind each signal and an in-sample historical directional evaluation with sample counts and explicit fee/slippage limitations.
+
+Operational visibility includes Prometheus counters and gauges for alert delivery, live runtime ownership, Binance stream connectivity/reconnects, trade ingestion and Telegram dashboard edits. `/health` reports service readiness plus live-runtime and stream state.
+
+
+## Product onboarding and Premium conversion
+
+- The Telegram home dashboard keeps **Create Price Alert** as the primary first action and groups secondary destinations into compact two-button rows for mobile screens. Welcome copy demonstrates the first alert, separates Free from Premium value and states the runtime Telegram Stars price and duration. Premium is a one-time purchase with no automatic renewal.
+- Premium-only entry points explain the benefit and provide a direct, optional plan-comparison route. No fake scarcity, hidden fees, forced purchase flows or obstructive cancellation are used.
+- Premium custom Watchlist assets are discoverable by typing a project or coin name in Telegram. ORBSAT presents up to six CoinGecko matches, verifies the selected metadata and current USD quote, then adds the asset within the existing 10-item cap. Search, selection, errors and cancellation are localized in English and Arabic.
+- The home/welcome screen uses the same runtime-edited Stars price and duration as the Premium invoice, including Home, Back, language selection and persistent Dashboard navigation.
+
+## CI validation and current test deployment
+
+- Before merging, confirm that CI ran against the exact current PR head SHA. A green run for an older commit does not validate the latest changes.
+- The existing Botkeep test application remains configured to branch feature/telegram-navigation-premium-assets for this temporary test rollout. Keep that branch selected until Telegram smoke tests and Botkeep runtime checks pass. After the feature PR is merged, move the application back to main as a separate controlled deployment step.
+- Custom Watchlist assets are personal Watchlist entries only. They do not automatically enter the Premium Live Market or quantitative research universe; those feeds require separate provider mapping and validation.
