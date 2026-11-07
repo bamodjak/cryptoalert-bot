@@ -372,7 +372,7 @@ async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis, bot: B
         await m.answer(
             "Preview above. It will be copied to all registered, non-suspended users.",
         )
-    payload_key = f"admin:broadcast:payload:{preview_message.chat.id}:{preview_message.message_id}"
+    payload_key = f"admin:broadcast:payload:{m.chat.id}:{preview_message.message_id}"
     await redis.set(payload_key, json.dumps(payload), ex=3600)
 
 
