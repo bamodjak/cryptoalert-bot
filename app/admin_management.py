@@ -70,6 +70,14 @@ async def _premium_kind(session: AsyncSession, u: User) -> str:
     return "Premium · source unclear"
 
 
+def _user_search_statement(query: str):
+    """Match numeric Telegram IDs exactly and usernames by case-insensitive fragment."""
+    normalized = (query or "").strip().lstrip("@")
+    if normalized.isdigit():
+        return select(User).where(User.id == int(normalized)).limit(10)
+    return select(User).where(User.username.ilike(f"%{normalized}%")).limit(10)
+
+
 def _user_name(u: User) -> str:
     name = " ".join(x for x in (u.first_name, u.last_name) if x).strip()
     if name:
@@ -300,9 +308,8 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
 
     if state.get("state") == "find":
         await redis.delete(key)
-        q = raw.lstrip("@")
-        stmt = select(User).where(User.id == int(q)) if q.isdigit() else select(User).where(User.username.ilike(f"%{q}%")).limit(10)
-        users = list((await session.scalars(stmt.limit(10))).all())
+        stmt = _user_search_statement(raw)
+        users = list((await session.scalars(stmt)).all())
         if not users:
             await m.answer(
                 "No registered user found. They must have pressed Start at least once.",
