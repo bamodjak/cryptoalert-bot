@@ -190,3 +190,14 @@ def test_operations_stats_endpoint_returns_extended_counts_only_with_valid_token
     assert payload["stars_earned"] == 999
     assert payload["live_runtime_active"] is False
     assert payload["live_stream_connected"] is False
+
+
+def test_application_settings_accept_botkeep_server_port(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv("BOT_TOKEN", "123:test-token")
+    monkeypatch.setenv("SERVER_PORT", "9123")
+    monkeypatch.delenv("PORT", raising=False)
+
+    settings = Settings(_env_file=None)
+    assert settings.port == 9123
