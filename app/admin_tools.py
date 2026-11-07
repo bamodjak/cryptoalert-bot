@@ -7,6 +7,7 @@ import random
 import html
 import json
 import asyncio
+import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -25,6 +26,7 @@ from .db import (
     AdminAudit, Giveaway, GiveawayEntry, GiveawayWinner, ManualPayment, Payment, PremiumGrant, User, utcnow
 )
 
+log = logging.getLogger(__name__)
 router = Router(name="admin_tools")
 public_router = Router(name="giveaway_public")
 router.message.filter(F.from_user.id.in_(settings.admin_id_set))
@@ -315,7 +317,7 @@ async def confirm_manual_payment_decision(cb: CallbackQuery, session: AsyncSessi
                 f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.",
             )
         except Exception:
-            pass
+            log.exception("could not notify user %s after manual payment verification", user.id)
 
 
 @router.message(Command("pendingpay"))
@@ -575,24 +577,13 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         await redis.delete(lock_key)
         await cb.answer("Another broadcast is already running.", show_alert=True)
         return
-    await cb.answer("Broadcast started.")
-    ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
-    await session.commit()  # release the DB connection before network sends
     sent = 0
     failed = 0
-    for uid in ids:
-        try:
-            if payload["kind"] == "copy":
-                await bot.copy_message(
-                    chat_id=uid,
-                    from_chat_id=int(payload["from_chat_id"]),
-                    message_id=int(payload["message_id"]),
-                )
-            else:
-                await bot.send_message(uid, str(payload["text"]), parse_mode=None)
-            sent += 1
-        except TelegramRetryAfter as exc:
-            await asyncio.sleep(exc.retry_after)
+    try:
+        await cb.answer("Broadcast started.")
+        ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
+        await session.commit()  # release the DB connection before network sends
+        for uid in ids:
             try:
                 if payload["kind"] == "copy":
                     await bot.copy_message(
@@ -603,13 +594,32 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
                 else:
                     await bot.send_message(uid, str(payload["text"]), parse_mode=None)
                 sent += 1
+            except TelegramRetryAfter as exc:
+                await asyncio.sleep(exc.retry_after)
+                try:
+                    if payload["kind"] == "copy":
+                        await bot.copy_message(
+                            chat_id=uid,
+                            from_chat_id=int(payload["from_chat_id"]),
+                            message_id=int(payload["message_id"]),
+                        )
+                    else:
+                        await bot.send_message(uid, str(payload["text"]), parse_mode=None)
+                    sent += 1
+                except Exception:
+                    failed += 1
+                    log.exception("broadcast retry failed")
             except Exception:
                 failed += 1
-        except Exception:
-            failed += 1
-        await asyncio.sleep(0.04)
-    await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
-    await redis.delete(payload_key)
-    if await redis.get(global_lock_key) == lock_key:
-        await redis.delete(global_lock_key)
-    await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
+                log.exception("broadcast delivery failed")
+            await asyncio.sleep(0.04)
+        await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
+        await redis.delete(payload_key)
+        await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
+    except Exception:
+        log.exception("broadcast workflow aborted after %s delivered and %s failed", sent, failed)
+        raise
+    finally:
+        # Never leave the global mutex held if an unexpected error interrupts delivery.
+        if await redis.get(global_lock_key) == lock_key:
+            await redis.delete(global_lock_key)
