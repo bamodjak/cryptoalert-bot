@@ -107,8 +107,18 @@ class PriceService:
         if cached is not None:
             if cached == "":
                 return None
-            cid, name = json.loads(cached)
-            return Coin(cid, s, name)
+            try:
+                decoded = json.loads(cached)
+                if (
+                    isinstance(decoded, list) and len(decoded) == 2
+                    and all(isinstance(value, str) and value.strip() for value in decoded)
+                ):
+                    cid, name = decoded
+                    return Coin(cid, s, name)
+            except (TypeError, ValueError):
+                pass
+            log.warning("discarding malformed cached coin lookup for %s", s)
+            await self.redis.delete(key)
         data = await self._get("/search", {"query": s})
         for c in data.get("coins", []):  # already sorted by market-cap rank
             if c.get("symbol", "").lower() == s:
@@ -510,15 +520,21 @@ class PriceService:
 
     async def gas_gwei(self) -> float:
         cached = await self.redis.get("gas:gwei")
+        cached_price = _cached_price(cached)
+        if cached is not None and cached_price is not None:
+            return cached_price
         if cached is not None:
-            return float(cached)
+            log.warning("discarding invalid cached Ethereum gas quote")
+            await self.redis.delete("gas:gwei")
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         try:
             async with self.http.post(settings.eth_rpc_url, json=payload) as r:
                 r.raise_for_status()
                 data = await r.json()
             gwei = int(data["result"], 16) / 1e9
-        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, ValueError) as e:
+            if not math.isfinite(gwei) or gwei <= 0:
+                raise ValueError("RPC returned an invalid gas price")
+        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, TypeError, ValueError) as e:
             metrics.PRICE_ERRORS.inc()
             raise PriceError(f"gas RPC failed: {e}") from e
         await self.redis.set("gas:gwei", gwei, ex=25)
