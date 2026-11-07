@@ -20,7 +20,7 @@
 
 **Operations and safety**
 - PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint, Prometheus metrics and a token-gated read-only web operations dashboard at `/dashboard`
-- Admin-only user management with searchable user selection and direct Premium grants (no routine ID copy/paste), confirmation-gated suspend/restore controls, and editable Premium Stars price/duration from the Admin Panel; pending manual payments have an in-chat review queue with explicit verify/reject confirmation, audit logging and Premium activation only after verification; also includes giveaways, broadcast confirmation and kill switch
+- Admin-only user management with searchable user selection and direct Premium grants (no routine ID copy/paste), confirmation-gated suspend/restore controls, and editable Premium Stars price/duration from the Admin Panel; pending manual payments have an in-chat review queue with explicit verify/reject confirmation, audit logging and Premium activation only after verification; admin grants and access changes are committed before success replies, concurrent grants lock the target account, and duplicate manual-payment references are handled as a recoverable validation error; also includes giveaways, broadcast confirmation and kill switch
 - Admin overview reports registrations (including 7-day growth), Premium accounts, active alerts, suspended/blocked accounts, unrefunded Stars and pending manual payments
 - Anti-spam throttling and idempotent Telegram Stars payment handling
 - Market data can be delayed; the bot is informational and does not provide financial advice
