@@ -35,7 +35,7 @@ def test_help_guide_is_action_oriented_and_covers_the_main_features():
     arabic = tr("ar", "help_text")
     for label in ("Create Price Alert", "Market Pulse", "Top Movers", "Crypto Prices", "Watchlist", "My Alerts", "Premium", "Settings"):
         assert label in english
-    for label in ("إنشاء تنبيه للسعر", "نبض السوق", "العملات الأكثر حركة", "أسعار العملات الرقمية", "قائمة المتابعة", "تنبيهاتي", "بريميوم", "الإعدادات"):
+    for label in ("إنشاء تنبيه للسعر", "نبض السوق", "الأكثر حركة", "أسعار العملات", "قائمة المتابعة", "تنبيهاتي", "بريميوم", "الإعدادات"):
         assert label in arabic
     assert "top 33" in english.lower()
     assert "33" in arabic
