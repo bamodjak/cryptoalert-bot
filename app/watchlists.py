@@ -38,7 +38,7 @@ def watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKey
         for row in rows
     ]
     buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add asset", "＋ إضافة أصل"), callback_data="wl:add")])
-    buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add another crypto (Premium)", "＋ إضافة عملة أخرى (بريميوم)"), callback_data="wl:addcustom")])
+    buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add custom asset (Premium)", "＋ إضافة أصل مخصص (بريميوم)"), callback_data="wl:addcustom")])
     buttons.append([InlineKeyboardButton(text=_label(language, "⌂ Dashboard", "⌂ الرئيسية"), callback_data="nav:home")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -102,14 +102,22 @@ async def cb_watchlist_add(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "wl:addcustom")
 async def cb_watchlist_add_custom(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
+    await callback.answer()
     user = await get_user(session, callback.from_user)
     if not user.is_premium:
-        await callback.answer("Custom assets are available to Premium members. Use /premium.", show_alert=True)
+        if callback.message:
+            await callback.message.answer(
+                tr(user.language, "custom_asset_premium_only"),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=tr(user.language, "premium_compare"), callback_data="dash:premium")],
+                    [InlineKeyboardButton(text=tr(user.language, "home"), callback_data="nav:home")],
+                ]),
+            )
         return
     await state.set_state(CustomAssetInput.waiting_for_coingecko_id)
     if callback.message:
         await callback.message.answer(
-            "Add a crypto to your Watchlist (Premium)\n\n"
+            "Add a custom asset to your Watchlist (Premium · 10 slots total)\n\n"
             "1. Open https://www.coingecko.com/en/coins\n"
             "2. Search the exact project name and open its page.\n"
             "3. Copy the final part of its URL (the CoinGecko ID).\n"
@@ -117,7 +125,6 @@ async def cb_watchlist_add_custom(callback: CallbackQuery, session: AsyncSession
             "4. Send only that ID here.\n\n"
             "I will verify the asset name, ticker and price before adding it. Send /cancel to stop."
         )
-    await callback.answer()
 
 
 @router.message(CustomAssetInput.waiting_for_coingecko_id, Command("cancel"))
