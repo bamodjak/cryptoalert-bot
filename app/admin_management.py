@@ -79,7 +79,9 @@ async def _premium_kind(session: AsyncSession, u: User) -> str:
 
 def _user_search_statement(query: str):
     """Match numeric Telegram IDs exactly and usernames by case-insensitive fragment."""
-    normalized = (query or "").strip().lstrip("@")
+    normalized = (query or "").strip().lstrip("@").strip()
+    if not normalized:
+        return select(User).where(User.id == -1)
     if normalized.isdigit():
         return select(User).where(User.id == int(normalized)).limit(10)
     return select(User).where(User.username.ilike(f"%{normalized}%")).limit(10)
@@ -409,11 +411,9 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
             rows.append([_grant_user_button(u), _access_button(u)])
         rows.append(_back())
         await m.answer(
-            "<b>Search results</b>\nChoose an account to grant Premium:",
+            "<b>Search results</b>\nChoose an account to grant Premium:\n\n" + "\n\n".join(cards),
             reply_markup=_kb(rows),
         )
-        for card in cards:
-            await m.answer(card)
         return
 
     if state.get("state") == "grant_days":
