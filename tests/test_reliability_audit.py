@@ -100,3 +100,12 @@ def test_manual_payment_duplicate_reference_race_is_reported_cleanly(monkeypatch
         assert "already recorded" in message.answer.await_args.args[0].lower()
 
     asyncio.run(scenario())
+
+
+def test_live_dashboard_stale_message_errors_are_classified():
+    from app.live_dashboard import is_stale_dashboard_message_error
+
+    assert is_stale_dashboard_message_error(Exception("Bad Request: message to edit not found"))
+    assert is_stale_dashboard_message_error(Exception("Bad Request: chat not found"))
+    assert not is_stale_dashboard_message_error(Exception("Bad Request: message is not modified"))
+    assert not is_stale_dashboard_message_error(Exception("Bad Request: can't parse entities"))
