@@ -5,6 +5,7 @@ Manual payment records do not activate Premium until an admin verifies them.
 """
 import random
 import html
+import json
 import asyncio
 import re
 from datetime import timedelta
@@ -331,23 +332,48 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
 
 
 @router.message(Command("broadcast"))
-async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis):
-    text = (command.args or "").strip()
-    if not text:
-        await m.answer("Usage: /broadcast your announcement text\nThis creates a preview; confirm it with the button before sending.")
+async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis, bot: Bot):
+    """Preview a text announcement or a replied-to message before delivery."""
+    announcement = (command.args or "").strip()
+    source = m.reply_to_message
+    if not announcement and not source:
+        await m.answer(
+            "Reply to a message (text, photo, video or document) with /broadcast, "
+            "or use /broadcast your announcement text. Nothing is sent until you confirm."
+        )
         return
-    announcement = text[:600]
-    markup = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
-        InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
-    ]])
-    preview_message = await m.answer(
-        f"<b>Broadcast preview</b>\n\n{html.escape(announcement, quote=True)}\n\n"
-        "Confirm to send to all registered users. Preview is limited to 600 characters.",
-        reply_markup=markup,
-    )
+    if announcement:
+        payload = {"kind": "text", "text": announcement[:600]}
+        preview = (
+            f"<b>Broadcast preview</b>\\n\\n{html.escape(payload['text'], quote=True)}\\n\\n"
+            "Audience: all registered, non-suspended users."
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
+            InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
+        ]])
+        preview_message = await m.answer(preview, reply_markup=markup)
+    else:
+        payload = {
+            "kind": "copy",
+            "from_chat_id": source.chat.id,
+            "message_id": source.message_id,
+        }
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
+            InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
+        ]])
+        preview_message = await bot.copy_message(
+            chat_id=m.chat.id,
+            from_chat_id=source.chat.id,
+            message_id=source.message_id,
+            reply_markup=markup,
+        )
+        await m.answer(
+            "Preview above. It will be copied to all registered, non-suspended users.",
+        )
     payload_key = f"admin:broadcast:payload:{preview_message.chat.id}:{preview_message.message_id}"
-    await redis.set(payload_key, announcement, ex=3600)
+    await redis.set(payload_key, json.dumps(payload), ex=3600)
 
 
 @router.callback_query(F.data == "admin:broadcast:cancel")
@@ -367,14 +393,21 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     if cb.from_user.id not in settings.admin_id_set:
         await cb.answer("Not authorized.", show_alert=True)
         return
-    if not cb.message or not cb.message.text:
+    if not cb.message:
         await cb.answer("Broadcast preview unavailable.", show_alert=True)
         return
     payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
-    announcement = await redis.get(payload_key)
-    if not announcement:
+    raw_payload = await redis.get(payload_key)
+    if not raw_payload:
         await cb.answer("Broadcast preview expired or already processed.", show_alert=True)
         return
+    try:
+        payload = json.loads(raw_payload)
+        if not isinstance(payload, dict) or payload.get("kind") not in {"text", "copy"}:
+            raise ValueError("invalid payload")
+    except (ValueError, TypeError):
+        # Compatibility with previews created by the earlier text-only flow.
+        payload = {"kind": "text", "text": raw_payload}
     lock_key = f"admin:broadcast:lock:{cb.message.chat.id}:{cb.message.message_id}"
     claimed = await redis.set(lock_key, str(cb.from_user.id), nx=True, ex=3600)
     if not claimed:
@@ -393,12 +426,26 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     failed = 0
     for uid in ids:
         try:
-            await bot.send_message(uid, announcement, parse_mode=None)
+            if payload["kind"] == "copy":
+                await bot.copy_message(
+                    chat_id=uid,
+                    from_chat_id=int(payload["from_chat_id"]),
+                    message_id=int(payload["message_id"]),
+                )
+            else:
+                await bot.send_message(uid, str(payload["text"]), parse_mode=None)
             sent += 1
         except TelegramRetryAfter as exc:
             await asyncio.sleep(exc.retry_after)
             try:
-                await bot.send_message(uid, announcement, parse_mode=None)
+                if payload["kind"] == "copy":
+                    await bot.copy_message(
+                        chat_id=uid,
+                        from_chat_id=int(payload["from_chat_id"]),
+                        message_id=int(payload["message_id"]),
+                    )
+                else:
+                    await bot.send_message(uid, str(payload["text"]), parse_mode=None)
                 sent += 1
             except Exception:
                 failed += 1
