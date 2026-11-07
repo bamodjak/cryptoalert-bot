@@ -85,7 +85,7 @@ Beginner mode is the default. Advanced mode exposes detailed indicators, custom 
 - Asset details are shared by the Top-33 browser, market movers and watchlist entries. Contextual actions lead to alert creation, watchlist addition and research.
 - The curated core asset registry is shared by pricing, watchlists, the live dashboard and the advisor. Dynamic provider-ranked lists remain dynamic.
 - Persistent quick navigation and watchlist copy are localized in English and Arabic.
-- The inline navigation is a single-column menu; admin controls remain owner/admin-only. Premium users can add a custom watchlist asset by submitting a CoinGecko ID, with metadata and a current USD quote verified before insertion; the normal watchlist item cap still applies.
+- The inline navigation is a single-column menu; admin controls remain owner/admin-only. Premium users can search custom Watchlist assets by project name in Telegram, select a matching CoinGecko result, and have metadata plus a current USD quote verified before insertion; the normal 10-item Watchlist cap still applies.
 - Personal settings persist timezone and advanced presentation mode. Advanced mode adds market capitalization and 24-hour volume when the provider supplies those metrics.
 - Alerts can be edited, snoozed for one hour and resumed. The worker excludes currently snoozed alerts. Triggered alerts remain available through recent history.
 - User timezone is used to render triggered-alert history. The timezone database is installed as a Python dependency so ZoneInfo works in minimal containers.
