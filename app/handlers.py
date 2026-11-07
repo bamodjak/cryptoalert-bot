@@ -344,7 +344,10 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "/pendingpay — list pending payments\n/verify PAYMENT_ID — verify and grant Premium\n"
             "/rejectpay PAYMENT_ID — reject payment\n/revenue — revenue by currency"
         )
-        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+        rows = [
+            [InlineKeyboardButton(text="🧾 Review pending payments", callback_data="admin:payments:pending")],
+            [InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")],
+        ]
     elif action == "giveaways":
         text = (
             "<b>🎁 Giveaways</b>\n/giveaway TITLE | PREMIUM_DAYS | WINNERS\n"
