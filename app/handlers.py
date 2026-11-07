@@ -115,7 +115,7 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
 
 
 @router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
-async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService):
+async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService, redis: Redis):
     """Handle visible quick-action labels without requiring slash-command syntax."""
     u = await get_user(session, m.from_user)
     action_label = (m.text or "").strip()
@@ -153,11 +153,9 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         if u.id == settings.owner_id:
             await m.answer(tr(u.language, "premium_owner"))
             return
-        status = (
-            "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
-            if u.is_premium and u.premium_until else ""
-        )
-        await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
+        price, days = await get_offer(redis)
+        status = premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")) if u.is_premium and u.premium_until else ""
+        await m.answer(premium_copy(u.language, price, days) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.message(Command("language"))
@@ -231,7 +229,7 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data.in_({"dash:price", "dash:gas", "dash:alerts", "dash:premium"}))
-async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService, redis: Redis):
     # Acknowledge Telegram callback queries before any database/network work; Telegram expires them quickly.
     try:
         await cb.answer()
@@ -274,7 +272,10 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
         else:
             text = tr(u.language, "no_alerts")
     elif action == "premium":
-        text = premium_copy(u.language)
+        price, days = await get_offer(redis)
+        text = premium_copy(u.language, price, days)
+        if u.is_premium and u.premium_until:
+            text += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     else:
         return
 
@@ -488,25 +489,35 @@ def premium_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def premium_copy(lang: str = "en") -> str:
+def premium_copy(lang: str = "en", price: int | None = None, days: int | None = None) -> str:
+    price = settings.premium_price_stars if price is None else price
+    days = settings.premium_days if days is None else days
     return (
         tr(lang, "premium_title") + "\n\n"
         + tr(lang, "free_plan", free=settings.free_alert_limit) + "\n\n"
-        + tr(lang, "premium_plan", stars=settings.premium_price_stars, days=settings.premium_days, premium=settings.premium_alert_limit)
+        + tr(lang, "premium_plan", stars=price, days=days, premium=settings.premium_alert_limit)
         + "\n\n" + tr(lang, "pay_note")
     )
 
 
+def premium_member_status(lang: str, expiry: str) -> str:
+    if lang == "ar":
+        return (f"\n\n⭐ <b>أنت الآن عضو بريميوم</b> · الاشتراك نشط حتى {expiry} UTC.\n"
+                "مزاياك: التحليل والإشارات الكمية، لوحة السوق المباشر، حتى 500 تنبيه نشط، وتنبيهات الغاز.\n"
+                "هذه المزايا مفعّلة لحسابك؛ استخدم أزرار بريميوم في القائمة الرئيسية.")
+    return (f"\n\n⭐ <b>YOU ARE A PREMIUM MEMBER</b> · Active until {expiry} UTC.\n"
+            "Your paid benefits: Premium quantitative signals, Live Market dashboard, up to 500 active alerts, and Ethereum gas alerts.\n"
+            "These features are enabled on your account. Open them from the main menu.")
+
+
 @router.message(Command("premium"))
-async def cmd_premium(m: Message, session: AsyncSession):
+async def cmd_premium(m: Message, session: AsyncSession, redis: Redis):
     u = await get_user(session, m.from_user)
     if u.id == settings.owner_id:
         return await m.answer(tr(u.language, "premium_owner"))
-    status = (
-        "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
-        if u.is_premium and u.premium_until else ""
-    )
-    await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
+    price, days = await get_offer(redis)
+    status = premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")) if u.is_premium and u.premium_until else ""
+    await m.answer(premium_copy(u.language, price, days) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.callback_query(F.data == "premium:buy")
