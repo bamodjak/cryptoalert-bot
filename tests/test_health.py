@@ -120,11 +120,11 @@ def test_health_rejects_an_alert_worker_that_has_gone_stale(monkeypatch):
 
 
 
-def test_docker_healthcheck_uses_render_runtime_port():
+def test_docker_healthcheck_uses_botkeep_or_standard_runtime_port():
     dockerfile = Path(__file__).parents[1] / "Dockerfile"
     content = dockerfile.read_text()
 
-    assert "os.getenv('PORT', '8080')" in content
+    assert "os.getenv('SERVER_PORT', os.getenv('PORT', '8080'))" in content
     assert "127.0.0.1:8080/health" not in content
 
 
