@@ -88,7 +88,7 @@ def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
 
     get_user.assert_awaited_once()
     message.answer.assert_awaited()
-    assert message.answer.await_count == 2
+    assert message.answer.await_count == 1
     welcome_args, welcome_kwargs = message.answer.await_args_list[0]
     assert welcome_args[0] == welcome_text("en")
     assert welcome_kwargs["reply_markup"] is not None
