@@ -11,7 +11,10 @@ def test_manual_payment_confirmation_route_is_distinct_from_decision_request():
     names = [handler.callback.__name__ for handler in router.callback_query.handlers]
     assert names.index("request_manual_payment_decision") < names.index("confirm_manual_payment_decision")
     request_handler = next(h for h in router.callback_query.handlers if h.callback.__name__ == "request_manual_payment_decision")
-    assert "regexp" in repr(request_handler.filters[0].callback)
+    from types import SimpleNamespace
+    magic = request_handler.filters[0].magic
+    assert magic.resolve(SimpleNamespace(data="admin:manualpay:verify:7")) is True
+    assert magic.resolve(SimpleNamespace(data="admin:manualpay:confirm:verify:7")) is False
 
 
 def test_confirmed_manual_payment_verification_grants_premium_and_audits():
