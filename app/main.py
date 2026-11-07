@@ -222,6 +222,8 @@ def build_web_app(redis: Redis) -> web.Application:
 
 
 
+FSM_STATE_TTL = timedelta(minutes=30)
+
 POLLING_LOCK_KEY = "bot:telegram-poller"
 POLLING_LOCK_TTL_SECONDS = 45
 POLLING_STARTUP_GRACE_SECONDS = 10
@@ -330,7 +332,9 @@ async def main() -> None:
 
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     bot = Bot(settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher(storage=RedisStorage.from_url(settings.redis_url))
+    dp = Dispatcher(storage=RedisStorage.from_url(
+        settings.redis_url, state_ttl=FSM_STATE_TTL, data_ttl=FSM_STATE_TTL
+    ))
     http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
     prices = PriceService(redis, http)
 
