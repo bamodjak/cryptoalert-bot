@@ -60,6 +60,20 @@ def live_exit_keyboard(language: str) -> InlineKeyboardMarkup:
     ]])
 
 
+def is_stale_dashboard_message_error(error: Exception) -> bool:
+    """Identify Telegram errors where the registered dashboard message no longer exists."""
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "message to edit not found",
+            "message can't be edited",
+            "message_id_invalid",
+            "chat not found",
+        )
+    )
+
+
 def live_closed_keyboard(language: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home"),
@@ -322,8 +336,15 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                             if "message is not modified" in str(exc).lower():
                                 record["last_text"] = text
                                 LAST_RENDERED_TEXT[user_key] = text
+                            elif is_stale_dashboard_message_error(exc):
+                                # The user deleted the message or Telegram can no longer
+                                # edit it. Remove the dead registration so /live can create
+                                # a fresh dashboard instead of retrying this message forever.
+                                await redis.hdel(DASHBOARDS_KEY, user_key)
+                                LAST_RENDERED_TEXT.pop(user_key, None)
+                                log.info("removed stale live dashboard registration")
                             else:
-                                log.debug("live dashboard edit rejected: %s", exc)
+                                log.warning("live dashboard edit rejected: %s", exc)
                         except TelegramForbiddenError:
                             await redis.hdel(DASHBOARDS_KEY, user_key)
                             LAST_RENDERED_TEXT.pop(user_key, None)
