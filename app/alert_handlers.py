@@ -22,7 +22,15 @@ from .prices import PriceError, PriceService
 from .users import get_user
 
 log = logging.getLogger(__name__)
-alert_router = Router(name="alerts")
+alert_def premium_limit_keyboard(language: str = "en") -> InlineKeyboardMarkup:
+    """Offer a clear, optional plan-comparison route at Premium limits."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=tr(language, "premium_compare"), callback_data="dash:premium")],
+        [InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home")],
+    ])
+
+
+router = Router(name="alerts")
 
 
 def is_non_command_text(message: Message) -> bool:
@@ -58,7 +66,7 @@ async def cmd_alert(m: Message, command: CommandObject, session: AsyncSession, p
     limit = settings.premium_alert_limit if u.is_premium else settings.free_alert_limit
     if await active_count(session, u.id) >= limit:
         extra = "" if u.is_premium else "\n" + tr(u.language, "premium_more")
-        return await m.answer(tr(u.language, "limit_reached", limit=limit) + extra, reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "limit_reached", limit=limit) + extra, reply_markup=premium_limit_keyboard(u.language) if not u.is_premium else nav_keyboard(u.id, lang=u.language))
     try:
         coin = await prices.resolve(sym)
     except PriceError:
@@ -93,7 +101,7 @@ async def cmd_gas(m: Message, session: AsyncSession, prices: PriceService):
 async def cmd_gasalert(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user)
     if not u.is_premium:
-        return await m.answer(tr(u.language, "gas_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(tr(u.language, "gas_premium_only"), reply_markup=premium_limit_keyboard(u.language))
     try:
         target = parse_number((command.args or "").replace("gwei", ""))
     except ValueError:
@@ -317,7 +325,7 @@ async def cb_create_alert(
             await state.clear()
             await edit_if_changed(cb.message,
                 tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
-                reply_markup=nav_keyboard(u.id, lang=u.language),
+                reply_markup=premium_limit_keyboard(u.language) if not u.is_premium else nav_keyboard(u.id, lang=u.language),
             )
             return
         alert = Alert(
@@ -341,7 +349,7 @@ async def cb_create_alert(
         if await active_count(session, u.id) >= limit:
             await edit_if_changed(cb.message,
                 tr(u.language, "limit_reached", limit=limit) + ("" if u.is_premium else "\n" + tr(u.language, "premium_more")),
-                reply_markup=nav_keyboard(u.id, lang=u.language),
+                reply_markup=premium_limit_keyboard(u.language) if not u.is_premium else nav_keyboard(u.id, lang=u.language),
             )
             return
         try:
