@@ -148,3 +148,13 @@ def test_admin_offer_input_filter_matches_numeric_messages():
     assert re.fullmatch(OFFER_VALUE_PATTERN, "100000")
     assert not re.fullmatch(OFFER_VALUE_PATTERN, "150x")
     assert not re.fullmatch(OFFER_VALUE_PATTERN, "")
+
+
+def test_premium_copy_renders_free_and_paid_allowances_without_missing_placeholders():
+    from app.config import settings
+
+    text = premium_copy("en", 1500, 30)
+    assert f"{settings.free_alert_limit}" in text
+    assert f"{settings.premium_alert_limit}" in text
+    assert "Telegram Stars" in text
+    assert "no automatic renewal" in text.lower()
