@@ -19,7 +19,7 @@ from sqlalchemy import func, select, text
 
 from . import metrics, worker
 from .config import settings
-from .db import Alert, Payment, Session, User, engine, utcnow
+from .db import Alert, ManualPayment, Payment, Session, User, engine, utcnow
 from .handlers import admin, router
 from .watchlists import router as watchlists_router
 from .live_dashboard import live_runtime_loop, router as live_dashboard_router
@@ -58,6 +58,61 @@ COMMANDS = [
 
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
 telegram_transport_ready = False
+
+ADMIN_DASHBOARD_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Orbsat · Operations</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#e8edf5;background:#0b1020}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 10% 0%,#1a2c48 0,transparent 42%),#0b1020}
+main{max-width:1080px;margin:auto;padding:36px 22px 64px}.top{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+h1{font-size:clamp(25px,4vw,38px);margin:0}.muted{color:#93a4bd}.status{border:1px solid #33445d;border-radius:99px;padding:7px 12px;font-size:12px}
+.panel{margin-top:26px;padding:20px;border:1px solid #27364d;border-radius:18px;background:#111a2b}
+label{display:block;font-size:13px;color:#aab9ce;margin-bottom:8px}input{width:min(100%,520px);padding:12px;border:1px solid #40516b;border-radius:10px;background:#0b1322;color:#fff}
+button{padding:12px 16px;border:0;border-radius:10px;background:#6ca6ff;color:#081323;font-weight:700;cursor:pointer;margin-left:8px}
+#error{color:#ff9b9b;min-height:20px;margin-top:10px;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:20px}
+.card{padding:20px;border:1px solid #27364d;border-radius:16px;background:#111a2b}.card span{display:block;color:#9fb0c7;font-size:13px}.card strong{display:block;font-size:30px;margin-top:9px;overflow-wrap:anywhere}
+footer{margin-top:28px;color:#8191a9;font-size:12px;line-height:1.6}
+@media(max-width:520px){main{padding:24px 14px}button{margin:10px 0 0;width:100%}}
+</style></head>
+<body><main>
+<div class="top"><div><div class="muted">ORBSAT / OPERATIONS</div><h1>Control Room</h1><div class="muted">Read-only service and growth overview</div></div><div id="status" class="status">Disconnected</div></div>
+<section class="panel"><label for="token">Operations access token · METRICS_TOKEN</label><input id="token" type="password" autocomplete="off" placeholder="Paste the configured metrics token"><button id="load">Load overview</button><div id="error" role="status"></div><div class="muted">The token is used only for this request and is not saved by this page.</div></section>
+<section class="grid" aria-live="polite">
+<div class="card"><span>Registered users</span><strong id="users">—</strong></div>
+<div class="card"><span>New users · 7 days</span><strong id="new-users">—</strong></div>
+<div class="card"><span>Premium accounts</span><strong id="premium">—</strong></div>
+<div class="card"><span>Active alerts</span><strong id="alerts">—</strong></div>
+<div class="card"><span>Suspended / blocked</span><strong id="access">—</strong></div>
+<div class="card"><span>Unrefunded Stars</span><strong id="stars">—</strong></div>
+<div class="card"><span>Pending manual payments</span><strong id="pending">—</strong></div>
+<div class="card"><span>Referral shares / joins</span><strong id="referrals">—</strong></div>
+<div class="card"><span>Kill switch</span><strong id="killed">—</strong></div>
+</section>
+<footer>Read-only analytics. User grants, payment verification, broadcasts and other account mutations remain in the authenticated Telegram admin panel. Market information is not financial advice.</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+$("load").addEventListener("click",async()=>{
+ const token=$("token").value.trim();$("error").textContent="";
+ if(!token){$("error").textContent="Enter the configured METRICS_TOKEN.";return;}
+ $("status").textContent="Connecting…";
+ try{
+  const response=await fetch("/stats.json",{headers:{Authorization:"Bearer "+token},cache:"no-store"});
+  if(!response.ok)throw new Error(response.status===404?"Access denied. Check METRICS_TOKEN.":"Request failed ("+response.status+").");
+  const d=await response.json();
+  for(const [id,value] of Object.entries({
+   users:d.users,new-users:d.new_users,premium:d.premium_users,alerts:d.active_alerts,
+   access:d.suspended_users+" / "+d.blocked_users,stars:d.stars_earned,pending:d.pending_manual_payments,
+   referrals:d.affiliation_shared+" / "+d.referrals_joined,killed:d.killed?"ON":"OFF"
+  }))$(id).textContent=String(value);
+  $("status").textContent="Connected · refreshed "+new Date().toLocaleTimeString();
+ }catch(error){$("status").textContent="Disconnected";$("error").textContent=error.message;}
+});
+</script></body></html>"""
 
 
 def register_routers(dp: Dispatcher) -> None:
@@ -102,6 +157,10 @@ def build_web_app(redis: Redis) -> web.Application:
             users = await s.scalar(select(func.count()).select_from(User)) or 0
             premium = await s.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
             alerts = await s.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
+            suspended = await s.scalar(select(func.count()).select_from(User).where(User.suspended.is_(True))) or 0
+            blocked = await s.scalar(select(func.count()).select_from(User).where(User.blocked.is_(True))) or 0
+            new_users = await s.scalar(select(func.count()).select_from(User).where(User.created_at >= utcnow() - __import__("datetime").timedelta(days=7))) or 0
+            pending_manual = await s.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
             stars = await s.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
             shared = await s.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
             referrals = await s.scalar(select(func.coalesce(func.sum(User.referrals_count), 0))) or 0
@@ -110,14 +169,18 @@ def build_web_app(redis: Redis) -> web.Application:
             {
                 "ok": True,
                 "users": users,
+                "new_users": new_users,
                 "premium_users": premium,
                 "active_alerts": alerts,
+                "suspended_users": suspended,
+                "blocked_users": blocked,
+                "pending_manual_payments": pending_manual,
                 "stars_earned": stars,
                 "affiliation_shared": shared,
                 "referrals_joined": referrals,
                 "killed": killed,
             },
-            headers=CORS_HEADERS,
+            headers={**CORS_HEADERS, "Cache-Control": "no-store"},
         )
 
     async def root(_: web.Request) -> web.Response:
@@ -133,8 +196,12 @@ def build_web_app(redis: Redis) -> web.Application:
             headers=CORS_HEADERS,
         )
 
+    async def admin_dashboard(_: web.Request) -> web.Response:
+        return web.Response(text=ADMIN_DASHBOARD_HTML, content_type="text/html")
+
     app = web.Application()
     app.router.add_get("/", root)
+    app.router.add_get("/dashboard", admin_dashboard)
     app.router.add_get("/health", health)
     app.router.add_get("/metrics", metrics_view)
     app.router.add_get("/stats.json", stats_json)
