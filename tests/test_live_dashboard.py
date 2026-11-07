@@ -153,8 +153,11 @@ def test_live_dashboard_navigation_rejects_free_users():
     asyncio.run(cb_live(callback, redis, session, prices))
 
     callback.answer.assert_awaited_once()
-    assert callback.answer.await_args.kwargs["show_alert"] is True
-    message.answer.assert_not_awaited()
+    message.answer.assert_awaited_once()
+    assert "Live Market" in message.answer.await_args.args[0]
+    markup = message.answer.await_args.kwargs["reply_markup"]
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert callbacks == ["nav:home", "dash:premium"]
     prices.prices.assert_not_awaited()
 
 
