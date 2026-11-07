@@ -503,7 +503,7 @@ async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis, bot: B
     if announcement:
         payload = {"kind": "text", "text": announcement[:600]}
         preview = (
-            f"<b>Broadcast preview</b>\\n\\n{html.escape(payload['text'], quote=True)}\\n\\n"
+            f"<b>Broadcast preview</b>\n\n{html.escape(payload['text'], quote=True)}\n\n"
             "Audience: all registered, non-suspended users."
         )
         markup = InlineKeyboardMarkup(inline_keyboard=[[
