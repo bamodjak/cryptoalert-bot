@@ -1,5 +1,6 @@
 import html
 import time
+from aiogram.dispatcher.event.bases import SkipHandler
 from datetime import timedelta
 from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -498,6 +499,27 @@ async def save_offer_edit(message: Message, redis: Redis, session: AsyncSession)
             InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
         ]]),
     )
+
+
+@admin.message(Command("cancel"))
+async def cancel_offer_edit(message: Message, redis: Redis):
+    """Allow admins to escape an active Premium offer edit using /cancel."""
+    key = f"admin:offer:input:{message.from_user.id}"
+    if await redis.get(key) not in {"price", "days"}:
+        raise SkipHandler
+    await redis.delete(key)
+    await message.answer("Premium offer edit cancelled.")
+
+
+@admin.message(F.text & ~F.text.startswith("/"))
+async def handle_invalid_offer_edit(message: Message, redis: Redis):
+    """Give recovery guidance for non-numeric input while an offer edit is active."""
+    key = f"admin:offer:input:{message.from_user.id}"
+    field = await redis.get(key)
+    if field not in {"price", "days"}:
+        raise SkipHandler
+    bounds = "1–100000 Stars" if field == "price" else "1–3650 days"
+    await message.answer(f"Invalid input. Send a whole number between {bounds}, or use /cancel to exit. Your edit is still active.")
 
 
 # ---------- Payments (Telegram Stars) ----------
