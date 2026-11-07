@@ -42,8 +42,11 @@ def test_advisor_report_discloses_heuristic_and_risk():
     assert "Not individualized financial advice" in report
     assert "volatility" in report
     assert "Why:" in report
+    assert "How to read:" in report
+    assert "not odds" in report
     assert "Historical 24h:" in report
     arabic_report = format_advisory([row], "ar")
+    assert "طريقة القراءة:" in arabic_report
     assert "الأسباب:" in arabic_report
     assert "تقييم تاريخي" in arabic_report
 

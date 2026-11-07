@@ -74,7 +74,7 @@ TEXT = {
         "quick_markets": "📊 Markets",
         "quick_alerts": "🔔 Alerts",
         "quick_premium": "⭐ Premium",
-        "quick_menu_hint": "Quick actions stay pinned below — use them to navigate Orbsat.",
+        "quick_menu_hint": "",
         "share": "📤 Forward Referral Link",
         "create_title": "🔔 <b>Create a price alert</b>",
         "choose_coin": "Choose a coin to get started.",
@@ -192,13 +192,13 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
         "welcome": "<b>ORBSAT · CRYPTO INTELLIGENCE</b>\nYour market, your alerts, one place.\n\n📊 Track the global market and top movers.\n🔔 Build price alerts in a few taps.\n⭐ Free: {free} active alerts · Premium: {premium} alerts + Ethereum gas alerts ({stars} ⭐ / {days} days).\n\n<i>Market data may be delayed. Alerts are best-effort, not financial advice.</i>",
         "premium_title": "<b>⭐ Choose your plan</b>",
         "free_plan": "<b>FREE · 0 ⭐</b>\n• Up to {free} active alerts\n• Core crypto price alerts\n• Telegram notifications",
-        "premium_plan": "<b>PREMIUM · {stars} ⭐ / {days} days</b>\n• Up to {premium} active alerts\n• Ethereum gas alerts\n• Live market dashboard inside Telegram chat\n• Keep using the same account; no subscription website needed",
+        "premium_plan": "<b>PREMIUM · {stars} ⭐ / {days} days</b>\n• Up to {premium} active alerts\n• Premium market signals with plain-language explanations\n• Ethereum gas alerts\n• Live market dashboard inside Telegram chat\n• Keep using the same account; no subscription website needed",
         "pay_note": "Pay securely through Telegram Stars. Alerts are best-effort and market data may be delayed.",
         "buy_premium": "⭐ Get Premium with Telegram Stars",
         "premium_owner": "⭐ Premium is enabled for the owner account at no charge.",
         "premium_active_status": "Your Premium is active until {date} UTC. Buying again adds {days} days.",
         "premium_invoice_title": "Orbsat Premium · {days} days",
-        "premium_invoice_description": "Up to {limit} active alerts, Ethereum gas alerts, and the Telegram live market dashboard for {days} days.",
+        "premium_invoice_description": "Premium market signals, up to {limit} active alerts, Ethereum gas alerts, and the Telegram live market dashboard for {days} days.",
         "premium_label": "Orbsat Premium",
         "invoice_invalid": "This invoice is no longer valid.",
         "payment_duplicate_recorded": "This payment was already recorded; no duplicate action was taken.",
@@ -206,6 +206,7 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
         "payment_duplicate_processed": "This payment was already processed; Premium was not added twice.",
         "payment_success": "Thank you! Premium is active until {date} UTC.",
         "payment_support": "Payment problem or refund request? Message {support} with the date of your payment.",
+        "live": "📡 Live Market · Premium",
         "live_title": "📊 <b>ORBSAT · PREMIUM LIVE MARKET</b>",
         "live_subtitle": "Trade-by-trade prices · auto-updating in this chat",
         "live_waiting": "waiting for trade",
@@ -292,7 +293,7 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
         "quick_markets": "📊 الأسواق",
         "quick_alerts": "🔔 التنبيهات",
         "quick_premium": "⭐ بريميوم",
-        "quick_menu_hint": "ستجد أزرار التنقل السريع مثبتة أسفل المحادثة.",
+        "quick_menu_hint": "",
         "share": "📤 مشاركة رابط الدعوة",
         "create_title": "🔔 <b>إنشاء تنبيه للسعر</b>",
         "choose_coin": "اختر عملة للبدء.",
@@ -410,7 +411,7 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
         "welcome": "<b>مرحباً بك في ORBSAT · ذكاء سوق العملات الرقمية</b>\nالسوق وتنبيهاتك في مكان واحد.\n\n📊 تابع السوق العالمي والعملات الأكثر حركة.\n🔔 أنشئ تنبيهات الأسعار بخطوات بسيطة.\n⭐ المجانية: {free} تنبيهات نشطة · بريميوم: {premium} تنبيهاً وتنبيهات رسوم إيثيريوم ({stars} ⭐ / {days} يوماً).\n\n<i>قد تتأخر بيانات السوق. التنبيهات حسب أفضل جهد وليست نصيحة مالية.</i>",
         "premium_title": "<b>⭐ اختر خطتك</b>",
         "free_plan": "<b>مجانية · 0 ⭐</b>\n• حتى {free} تنبيهات نشطة\n• تنبيهات أسعار العملات الرقمية\n• إشعارات تيليجرام",
-        "premium_plan": "<b>بريميوم · {stars} ⭐ / {days} يوماً</b>\n• حتى {premium} تنبيهاً نشطاً\n• تنبيهات رسوم شبكة إيثيريوم\n• لوحة أسعار مباشرة داخل محادثة تيليجرام\n• استخدم الحساب نفسه دون الحاجة إلى موقع اشتراك",
+        "premium_plan": "<b>بريميوم · {stars} ⭐ / {days} يوماً</b>\n• حتى {premium} تنبيهاً نشطاً\n• إشارات سوق بريميوم مع شرح واضح للأسباب\n• تنبيهات رسوم شبكة إيثيريوم\n• لوحة أسعار مباشرة داخل محادثة تيليجرام\n• استخدم الحساب نفسه دون الحاجة إلى موقع اشتراك",
         "pay_note": "ادفع بأمان عبر نجوم تيليجرام. التنبيهات غير مضمونة وقد تتأخر بيانات السوق.",
         "buy_premium": "⭐ اشترك في بريميوم عبر نجوم تيليجرام",
         "premium_owner": "⭐ خدمة بريميوم مفعّلة لحساب المالك مجاناً.",
@@ -424,6 +425,7 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
         "payment_duplicate_processed": "تمت معالجة هذه الدفعة مسبقاً؛ لم تتم إضافة بريميوم مرة أخرى.",
         "payment_success": "شكراً لك! اشتراك بريميوم نشط حتى {date} بتوقيت UTC.",
         "payment_support": "للمساعدة بشأن الدفع أو طلب استرداد، راسل {support} مع تاريخ الدفع.",
+        "live": "📡 السوق المباشر · بريميوم",
         "live_title": "📊 <b>ORBSAT · سوق بريميوم المباشر</b>",
         "live_subtitle": "أسعار التداولات · تحديث تلقائي داخل هذه المحادثة",
         "live_waiting": "في انتظار تداول",
@@ -448,11 +450,11 @@ def tr(language: str | None, key: str, **values) -> str:
     return template.format(**values) if values else template
 
 
-def welcome_text(language: str | None) -> str:
+def welcome_text(language: str | None, stars: int | None = None, days: int | None = None) -> str:
     return tr(
         language, "welcome",
         free=settings.free_alert_limit,
         premium=settings.premium_alert_limit,
-        stars=settings.premium_price_stars,
-        days=settings.premium_days,
+        stars=settings.premium_price_stars if stars is None else stars,
+        days=settings.premium_days if days is None else days,
     )

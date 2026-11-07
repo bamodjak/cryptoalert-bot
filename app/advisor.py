@@ -357,7 +357,20 @@ def format_advisory(rows: list[dict], language: str = "en") -> str:
         "volatility_moderate": ("Moderate volatility", "تقلب متوسط"),
         "volatility_calm": ("Calm volatility", "تقلب منخفض"),
     }
-    lines = [title, "4H OHLCV · multi-horizon trend · RSI · ATR · volume · volatility regime", ""]
+    explainer = (
+        "How to read: stance is the current technical setup, score is a rule-based checklist (not odds), "
+        "RSI measures momentum, ATR estimates typical price movement, and invalidation is the level "
+        "that would weaken the setup."
+        if not arabic else
+        "طريقة القراءة: الحالة تصف الوضع الفني الحالي، والدرجة حصيلة قواعد وليست احتمالاً للربح، "
+        "وRSI يقيس الزخم، وATR يقدّر نطاق الحركة المعتاد، ومستوى الإبطال هو السعر الذي يضعف الفرضية."
+    )
+    plain_reading = (
+        "Quick guide: BULLISH means several indicators currently lean upward; BEARISH means downside pressure is stronger; NEUTRAL means the evidence is mixed, so the model has no clear setup. A higher score means more checklist conditions agree—not a probability of profit. The objective and invalidation are reference levels, not guaranteed outcomes."
+        if not arabic else
+        "دليل سريع: صعودي يعني أن عدة مؤشرات تميل حالياً إلى الارتفاع؛ هبوطي يعني أن ضغط الانخفاض أقوى؛ ومحايد يعني أن المؤشرات متضاربة ولا توجد فرصة واضحة. الدرجة الأعلى تعني توافق شروط أكثر، وليست احتمالاً للربح. الهدف ومستوى الإبطال مستويات مرجعية وليسا ضماناً للنتيجة."
+    )
+    lines = [title, plain_reading, explainer, "4H OHLCV · multi-horizon trend · RSI · ATR · volume · volatility regime", ""]
     for row in rows:
         stance = row["stance"]
         if arabic:

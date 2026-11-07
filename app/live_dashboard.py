@@ -52,6 +52,21 @@ def dashboard_keyboard(language: str) -> InlineKeyboardMarkup:
     ]])
 
 
+def live_exit_keyboard(language: str) -> InlineKeyboardMarkup:
+    """Give users a route back to the product when Premium access ends."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home"),
+        InlineKeyboardButton(text=tr(language, "premium"), callback_data="dash:premium"),
+    ]])
+
+
+def live_closed_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home"),
+        InlineKeyboardButton(text=tr(language, "live"), callback_data="live:open"),
+    ]])
+
+
 def record_trade(pair: str, price: float, received_at: float | None = None) -> bool:
     """Store a validated market tick in memory without consuming Redis requests."""
     coin = PAIR_TO_COIN.get(pair.upper())
@@ -89,8 +104,11 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
     user = await session.get(User, message.from_user.id)
     if user is None:
         return await message.answer(tr("en", "live_start_hint"))
-    if not user.is_premium:
-        return await message.answer(tr(user.language, "live_premium_only"))
+    if not user.is_premium or user.suspended:
+        return await message.answer(
+            tr(user.language, "live_premium_only"),
+            reply_markup=live_exit_keyboard(user.language),
+        )
     # Reuse the user's existing dashboard instead of orphaning older messages.
     existing_raw = await redis.hget(DASHBOARDS_KEY, str(user.id))
     if existing_raw:
@@ -127,7 +145,7 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
 
 
 @router.callback_query(F.data.startswith("live:"))
-async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
+async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession, prices: PriceService):
     if not callback.message:
         await callback.answer()
         return
@@ -135,14 +153,49 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
     if user is None:
         await callback.answer()
         return
+
+    action = (callback.data or "").split(":", 1)[-1]
+    if action == "open":
+        if callback.message.chat.type != "private":
+            await callback.answer(tr(user.language, "live_private_only"), show_alert=True)
+            return
+        if not user.is_premium or user.suspended:
+            await callback.answer(tr(user.language, "live_premium_only"), show_alert=True)
+            return
+        # Replace the user's registered dashboard with the new message. Older
+        # dashboard buttons are rejected by the message-id check below.
+        try:
+            initial = await prices.prices([coin_id for coin_id, *_ in COINS], allow_stale=True)
+        except PriceError:
+            initial = {}
+        now = time.time()
+        seeded = {coin_id: (float(value), now - PRICE_TTL_SECONDS - 1) for coin_id, value in initial.items()}
+        body = format_dashboard(seeded, user.language)
+        sent = await callback.message.answer(body, reply_markup=dashboard_keyboard(user.language))
+        record = {
+            "user_id": user.id,
+            "chat_id": sent.chat.id,
+            "message_id": sent.message_id,
+            "language": user.language,
+            "last_text": body,
+        }
+        LAST_RENDERED_TEXT[str(user.id)] = body
+        await redis.hset(DASHBOARDS_KEY, str(user.id), json.dumps(record))
+        await callback.answer(tr(user.language, "live_started_hint"))
+        return
+
     current_raw = await redis.hget(DASHBOARDS_KEY, str(user.id))
     try:
         current = json.loads(current_raw) if current_raw else {}
-    except (ValueError, TypeError):
-        current = {}
+        if not isinstance(current, dict):
+            current = {}
+        current_chat_id = int(current.get("chat_id", -1))
+        current_message_id = int(current.get("message_id", -1))
+    except (ValueError, TypeError, AttributeError):
+        current_chat_id = current_message_id = -1
     is_current = (
-        int(current.get("chat_id", -1)) == callback.message.chat.id
-        and int(current.get("message_id", -1)) == callback.message.message_id
+        current_chat_id == callback.message.chat.id
+        and current_message_id == callback.message.message_id
     )
     if not is_current:
         await callback.answer("This dashboard is no longer active.", show_alert=True)
@@ -150,23 +203,27 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
     if not user.is_premium or user.suspended:
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
         LAST_RENDERED_TEXT.pop(str(user.id), None)
-        await callback.answer("Premium access is required.", show_alert=True)
+        await callback.answer(tr(user.language, "live_premium_only"), show_alert=True)
         try:
-            await callback.message.edit_text(tr(user.language, "live_premium_only"))
+            await callback.message.edit_text(
+                tr(user.language, "live_premium_only"),
+                reply_markup=live_exit_keyboard(user.language),
+            )
         except TelegramBadRequest:
             pass
         return
-    action = (callback.data or "").split(":", 1)[-1]
     if action == "close":
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
         LAST_RENDERED_TEXT.pop(str(user.id), None)
         await callback.answer()
         try:
-            await callback.message.edit_text(tr(user.language, "live_closed"))
+            await callback.message.edit_text(
+                tr(user.language, "live_closed"),
+                reply_markup=live_closed_keyboard(user.language),
+            )
         except TelegramBadRequest:
             pass
     else:
-        # Kept for old keyboards created before the refresh button was removed.
         await callback.answer("Dashboard updates automatically.")
 
 
@@ -244,6 +301,7 @@ async def live_dashboard_loop(bot: Bot, redis: Redis, stop: asyncio.Event) -> No
                                     await bot.edit_message_text(
                                         tr(user.language, "live_premium_expired"),
                                         chat_id=record["chat_id"], message_id=record["message_id"],
+                                        reply_markup=live_exit_keyboard(user.language),
                                     )
                                 except Exception:
                                     pass

@@ -15,6 +15,7 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
             InlineKeyboardButton(text=tr(lang, "market"), callback_data="dash:market"),
             InlineKeyboardButton(text=tr(lang, "movers"), callback_data="dash:movers"),
         ],
+        [InlineKeyboardButton(text=tr(lang, "live"), callback_data="live:open")],
         [
             InlineKeyboardButton(text=tr(lang, "crypto_prices"), callback_data="prices:open"),
             InlineKeyboardButton(text=tr(lang, "gas"), callback_data="dash:gas"),

@@ -97,3 +97,153 @@ def test_live_runtime_elects_one_owner_for_stream_and_dashboard(monkeypatch):
         assert redis.lock_instance.released is True
         assert live_dashboard.metrics.LIVE_RUNTIME_ACTIVE._value.get() == 0
     asyncio.run(run())
+
+
+
+def test_live_dashboard_can_be_opened_from_navigation():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.live_dashboard import cb_live, DASHBOARDS_KEY
+
+    user = SimpleNamespace(id=42, language="en", is_premium=True, suspended=False)
+    sent = SimpleNamespace(chat=SimpleNamespace(id=42), message_id=77)
+    message = SimpleNamespace(
+        chat=SimpleNamespace(type="private"),
+        answer=AsyncMock(return_value=sent),
+    )
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:open",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(hset=AsyncMock())
+    prices = SimpleNamespace(prices=AsyncMock(return_value={"bitcoin": 65000.0}))
+
+    asyncio.run(cb_live(callback, redis, session, prices))
+
+    message.answer.assert_awaited_once()
+    callback.answer.assert_awaited_once()
+    redis.hset.assert_awaited_once()
+    assert redis.hset.await_args.args[0] == DASHBOARDS_KEY
+    assert redis.hset.await_args.args[1] == "42"
+    assert '"message_id": 77' in redis.hset.await_args.args[2]
+
+
+def test_live_dashboard_navigation_rejects_free_users():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.live_dashboard import cb_live
+
+    user = SimpleNamespace(id=42, language="en", is_premium=False, suspended=False)
+    message = SimpleNamespace(chat=SimpleNamespace(type="private"), answer=AsyncMock())
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:open",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(hset=AsyncMock())
+    prices = SimpleNamespace(prices=AsyncMock())
+
+    asyncio.run(cb_live(callback, redis, session, prices))
+
+    callback.answer.assert_awaited_once()
+    assert callback.answer.await_args.kwargs["show_alert"] is True
+    message.answer.assert_not_awaited()
+    prices.prices.assert_not_awaited()
+
+
+
+def test_main_navigation_exposes_live_market_in_both_languages(monkeypatch):
+    from app.keyboards import nav_keyboard
+
+    for language, expected in (("en", "📡 Live Market · Premium"), ("ar", "📡 السوق المباشر · بريميوم")):
+        markup = nav_keyboard(-123456789, lang=language)
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        live = next(button for button in buttons if button.callback_data == "live:open")
+        assert live.text == expected
+
+
+
+def test_closing_live_dashboard_leaves_home_and_reopen_actions():
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.live_dashboard import cb_live, DASHBOARDS_KEY
+
+    user = SimpleNamespace(id=42, language="en", is_premium=True, suspended=False)
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=42, type="private"),
+        message_id=77,
+        edit_text=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:close",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(
+        hget=AsyncMock(return_value=json.dumps({"chat_id": 42, "message_id": 77})),
+        hdel=AsyncMock(),
+    )
+    prices = SimpleNamespace(prices=AsyncMock())
+
+    asyncio.run(cb_live(callback, redis, session, prices))
+
+    assert redis.hdel.await_args.args == (DASHBOARDS_KEY, "42")
+    markup = message.edit_text.await_args.kwargs["reply_markup"]
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert callbacks == ["nav:home", "live:open"]
+
+
+
+def test_premium_expiry_keyboard_keeps_home_and_upgrade_paths():
+    from app.live_dashboard import live_exit_keyboard
+
+    markup = live_exit_keyboard("en")
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert callbacks == ["nav:home", "dash:premium"]
+
+
+
+def test_live_dashboard_rejects_corrupt_cached_message_identity():
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.live_dashboard import cb_live
+
+    user = SimpleNamespace(id=42, language="en", is_premium=True, suspended=False)
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=42, type="private"),
+        message_id=77,
+        edit_text=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:close",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(
+        hget=AsyncMock(return_value=json.dumps({"chat_id": "not-an-id", "message_id": 77})),
+        hdel=AsyncMock(),
+    )
+
+    asyncio.run(cb_live(callback, redis, session, SimpleNamespace()))
+
+    callback.answer.assert_awaited_once_with(
+        "This dashboard is no longer active.", show_alert=True
+    )
+    redis.hdel.assert_not_awaited()
+    message.edit_text.assert_not_awaited()

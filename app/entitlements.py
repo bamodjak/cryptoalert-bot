@@ -24,8 +24,13 @@ def premium_payment_matches_offer(
     premium_price_stars: int,
 ) -> bool:
     """Accept only the exact Premium invoice offer configured by the bot."""
-    return (
-        invoice_payload == f"premium:{premium_days}"
-        and currency == "XTR"
-        and total_amount == premium_price_stars
-    )
+    parts = invoice_payload.split(":")
+    if currency != "XTR":
+        return False
+    if len(parts) == 3 and parts[0] == "premium":
+        try:
+            quoted_days, quoted_price = int(parts[1]), int(parts[2])
+        except ValueError:
+            return False
+        return 1 <= quoted_days <= 3650 and 1 <= quoted_price <= 100000 and total_amount == quoted_price
+    return invoice_payload == f"premium:{premium_days}" and total_amount == premium_price_stars

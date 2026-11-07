@@ -5,7 +5,9 @@ Manual payment records do not activate Premium until an admin verifies them.
 """
 import random
 import html
+import json
 import asyncio
+import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -24,6 +26,7 @@ from .db import (
     AdminAudit, Giveaway, GiveawayEntry, GiveawayWinner, ManualPayment, Payment, PremiumGrant, User, utcnow
 )
 
+log = logging.getLogger(__name__)
 router = Router(name="admin_tools")
 public_router = Router(name="giveaway_public")
 router.message.filter(F.from_user.id.in_(settings.admin_id_set))
@@ -162,6 +165,161 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
 
 
+@router.callback_query(F.data.regexp(r"^admin:payments:pending(?::\d+)?$"))
+async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
+    try:
+        page = int((cb.data or "admin:payments:pending").rsplit(":", 1)[1]) if (cb.data or "").count(":") == 3 else 0
+    except ValueError:
+        await cb.answer("Invalid payment page.", show_alert=True)
+        return
+    if not cb.message:
+        await cb.answer()
+        return
+    total = await session.scalar(
+        select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")
+    ) or 0
+    page_count = max(1, (total + 9) // 10)
+    page = max(0, min(page, page_count - 1))
+    rows = list((await session.scalars(
+        select(ManualPayment)
+        .where(ManualPayment.status == "pending")
+        .order_by(ManualPayment.created_at.asc(), ManualPayment.id.asc())
+        .offset(page * 10)
+        .limit(10)
+    )).all())
+    if not rows:
+        await edit_message_if_changed(
+            cb.message,
+            "No pending manual payments.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")
+            ]]),
+        )
+        await cb.answer()
+        return
+    buttons = []
+    lines = [
+        "<b>Pending manual payments</b>",
+        f"Page {page + 1}/{page_count} · {total} pending record(s)",
+        "Review each payment before granting Premium.",
+    ]
+    for payment in rows:
+        lines.append(
+            f"\n<b>#{payment.id}</b> · user <code>{payment.user_id}</code>\n"
+            f"{html.escape(payment.method)} · {html.escape(str(payment.amount))} "
+            f"{html.escape(payment.currency)} · {payment.premium_days} days"
+        )
+        buttons.append([
+            InlineKeyboardButton(text=f"Verify #{payment.id}", callback_data=f"admin:manualpay:verify:{payment.id}"),
+            InlineKeyboardButton(text=f"Reject #{payment.id}", callback_data=f"admin:manualpay:reject:{payment.id}"),
+        ])
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(text="◀️ Previous", callback_data=f"admin:payments:pending:{page - 1}"))
+    if page + 1 < page_count:
+        navigation.append(InlineKeyboardButton(text="Next ▶️", callback_data=f"admin:payments:pending:{page + 1}"))
+    if navigation:
+        buttons.append(navigation)
+    buttons.append([InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")])
+    await edit_message_if_changed(
+        cb.message, "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin:manualpay:(verify|reject):"))
+async def request_manual_payment_decision(cb: CallbackQuery):
+    try:
+        _, _, action, raw_id = (cb.data or "").split(":")
+        payment_id = int(raw_id)
+        if action not in {"verify", "reject"} or payment_id <= 0:
+            raise ValueError
+    except ValueError:
+        await cb.answer("Invalid payment action.", show_alert=True)
+        return
+    if not cb.message:
+        await cb.answer("Payment review unavailable.", show_alert=True)
+        return
+    verb = "verify and grant Premium" if action == "verify" else "reject without granting Premium"
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Confirm", callback_data=f"admin:manualpay:confirm:{action}:{payment_id}")],
+        [InlineKeyboardButton(text="Cancel", callback_data="admin:payments:pending")],
+    ])
+    await cb.message.answer(
+        f"Confirm payment #{payment_id}: {verb}? This decision will be recorded in the admin audit log.",
+        reply_markup=markup,
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("admin:manualpay:confirm:"))
+async def confirm_manual_payment_decision(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+    try:
+        _, _, _, action, raw_id = (cb.data or "").split(":")
+        payment_id = int(raw_id)
+        if action not in {"verify", "reject"} or payment_id <= 0:
+            raise ValueError
+    except ValueError:
+        await cb.answer("Invalid payment action.", show_alert=True)
+        return
+    payment = await session.scalar(
+        select(ManualPayment).where(ManualPayment.id == payment_id).with_for_update()
+    )
+    if payment is None or payment.status != "pending":
+        await cb.answer("Payment is no longer pending.", show_alert=True)
+        return
+    user = await session.scalar(
+        select(User).where(User.id == payment.user_id).with_for_update()
+    )
+    if action == "verify" and user is None:
+        await cb.answer("User record missing; payment remains pending.", show_alert=True)
+        return
+    payment.verified_by = cb.from_user.id
+    payment.verified_at = utcnow()
+    if action == "verify":
+        payment.status = "verified"
+        user.premium_until = premium_base(user) + timedelta(days=payment.premium_days)
+        session.add(PremiumGrant(
+            user_id=user.id,
+            granted_by=cb.from_user.id,
+            days=payment.premium_days,
+            reason=f"manual payment #{payment.id}",
+        ))
+        await audit(
+            session, cb.from_user.id, "manual_payment_verified", user.id,
+            f"payment_id={payment.id}; method={payment.method}; amount={payment.amount} {payment.currency}",
+        )
+    else:
+        payment.status = "rejected"
+        await audit(
+            session, cb.from_user.id, "manual_payment_rejected", payment.user_id,
+            f"payment_id={payment.id}",
+        )
+    await session.commit()
+    result = (
+        f"Payment #{payment.id} verified. Premium granted to {user.id} for {payment.premium_days} days."
+        if action == "verify"
+        else f"Payment #{payment.id} rejected. No Premium was granted."
+    )
+    if cb.message:
+        await edit_message_if_changed(
+            cb.message, result,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Pending payments", callback_data="admin:payments:pending")
+            ]]),
+        )
+    await cb.answer("Payment decision recorded.")
+    if action == "verify":
+        try:
+            await bot.send_message(
+                user.id,
+                f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.",
+            )
+        except Exception:
+            log.exception("could not notify user %s after manual payment verification", user.id)
+
+
 @router.message(Command("pendingpay"))
 async def pending_payments_cmd(m: Message, session: AsyncSession):
     rows = (await session.scalars(
@@ -210,7 +368,7 @@ async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     try:
         await bot.send_message(user.id, f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.")
     except Exception:
-        pass
+        log.exception("could not notify user %s after manual payment verification via /verify", user.id)
 
 
 @router.message(Command("rejectpay"))
@@ -227,6 +385,7 @@ async def reject_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     payment.verified_by = m.from_user.id
     payment.verified_at = utcnow()
     await audit(session, m.from_user.id, "manual_payment_rejected", payment.user_id, f"payment_id={payment.id}")
+    await session.commit()
     await m.answer(f"Payment #{payment.id} rejected; no Premium granted.")
 
 
@@ -331,23 +490,48 @@ async def draw_giveaway_cmd(m: Message, command: CommandObject, session: AsyncSe
 
 
 @router.message(Command("broadcast"))
-async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis):
-    text = (command.args or "").strip()
-    if not text:
-        await m.answer("Usage: /broadcast your announcement text\nThis creates a preview; confirm it with the button before sending.")
+async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis, bot: Bot):
+    """Preview a text announcement or a replied-to message before delivery."""
+    announcement = (command.args or "").strip()
+    source = m.reply_to_message
+    if not announcement and not source:
+        await m.answer(
+            "Reply to a message (text, photo, video or document) with /broadcast, "
+            "or use /broadcast your announcement text. Nothing is sent until you confirm."
+        )
         return
-    announcement = text[:600]
-    markup = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
-        InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
-    ]])
-    preview_message = await m.answer(
-        f"<b>Broadcast preview</b>\n\n{html.escape(announcement, quote=True)}\n\n"
-        "Confirm to send to all registered users. Preview is limited to 600 characters.",
-        reply_markup=markup,
-    )
-    payload_key = f"admin:broadcast:payload:{preview_message.chat.id}:{preview_message.message_id}"
-    await redis.set(payload_key, announcement, ex=3600)
+    if announcement:
+        payload = {"kind": "text", "text": announcement[:600]}
+        preview = (
+            f"<b>Broadcast preview</b>\n\n{html.escape(payload['text'], quote=True)}\n\n"
+            "Audience: all registered, non-suspended users."
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
+            InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
+        ]])
+        preview_message = await m.answer(preview, reply_markup=markup)
+    else:
+        payload = {
+            "kind": "copy",
+            "from_chat_id": source.chat.id,
+            "message_id": source.message_id,
+        }
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Send broadcast", callback_data="admin:broadcast:confirm"),
+            InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
+        ]])
+        preview_message = await bot.copy_message(
+            chat_id=m.chat.id,
+            from_chat_id=source.chat.id,
+            message_id=source.message_id,
+            reply_markup=markup,
+        )
+        await m.answer(
+            "Preview above. It will be copied to all registered, non-suspended users.",
+        )
+    payload_key = f"admin:broadcast:payload:{m.chat.id}:{preview_message.message_id}"
+    await redis.set(payload_key, json.dumps(payload), ex=3600)
 
 
 @router.callback_query(F.data == "admin:broadcast:cancel")
@@ -367,14 +551,21 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
     if cb.from_user.id not in settings.admin_id_set:
         await cb.answer("Not authorized.", show_alert=True)
         return
-    if not cb.message or not cb.message.text:
+    if not cb.message:
         await cb.answer("Broadcast preview unavailable.", show_alert=True)
         return
     payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
-    announcement = await redis.get(payload_key)
-    if not announcement:
+    raw_payload = await redis.get(payload_key)
+    if not raw_payload:
         await cb.answer("Broadcast preview expired or already processed.", show_alert=True)
         return
+    try:
+        payload = json.loads(raw_payload)
+        if not isinstance(payload, dict) or payload.get("kind") not in {"text", "copy"}:
+            raise ValueError("invalid payload")
+    except (ValueError, TypeError):
+        # Compatibility with previews created by the earlier text-only flow.
+        payload = {"kind": "text", "text": raw_payload}
     lock_key = f"admin:broadcast:lock:{cb.message.chat.id}:{cb.message.message_id}"
     claimed = await redis.set(lock_key, str(cb.from_user.id), nx=True, ex=3600)
     if not claimed:
@@ -386,27 +577,49 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         await redis.delete(lock_key)
         await cb.answer("Another broadcast is already running.", show_alert=True)
         return
-    await cb.answer("Broadcast started.")
-    ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
-    await session.commit()  # release the DB connection before network sends
     sent = 0
     failed = 0
-    for uid in ids:
-        try:
-            await bot.send_message(uid, announcement, parse_mode=None)
-            sent += 1
-        except TelegramRetryAfter as exc:
-            await asyncio.sleep(exc.retry_after)
+    try:
+        await cb.answer("Broadcast started.")
+        ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
+        await session.commit()  # release the DB connection before network sends
+        for uid in ids:
             try:
-                await bot.send_message(uid, announcement, parse_mode=None)
+                if payload["kind"] == "copy":
+                    await bot.copy_message(
+                        chat_id=uid,
+                        from_chat_id=int(payload["from_chat_id"]),
+                        message_id=int(payload["message_id"]),
+                    )
+                else:
+                    await bot.send_message(uid, str(payload["text"]), parse_mode=None)
                 sent += 1
+            except TelegramRetryAfter as exc:
+                await asyncio.sleep(exc.retry_after)
+                try:
+                    if payload["kind"] == "copy":
+                        await bot.copy_message(
+                            chat_id=uid,
+                            from_chat_id=int(payload["from_chat_id"]),
+                            message_id=int(payload["message_id"]),
+                        )
+                    else:
+                        await bot.send_message(uid, str(payload["text"]), parse_mode=None)
+                    sent += 1
+                except Exception:
+                    failed += 1
+                    log.exception("broadcast retry failed")
             except Exception:
                 failed += 1
-        except Exception:
-            failed += 1
-        await asyncio.sleep(0.04)
-    await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
-    await redis.delete(payload_key)
-    if await redis.get(global_lock_key) == lock_key:
-        await redis.delete(global_lock_key)
-    await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
+                log.exception("broadcast delivery failed")
+            await asyncio.sleep(0.04)
+        await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
+        await redis.delete(payload_key)
+        await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
+    except Exception:
+        log.exception("broadcast workflow aborted after %s delivered and %s failed", sent, failed)
+        raise
+    finally:
+        # Never leave the global mutex held if an unexpected error interrupts delivery.
+        if await redis.get(global_lock_key) == lock_key:
+            await redis.delete(global_lock_key)

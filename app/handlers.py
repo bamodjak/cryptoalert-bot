@@ -23,7 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics
 from .config import settings
-from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
+from .offer import get_offer, set_offer_value
+from .db import AdminAudit, Alert, ManualPayment, Payment, PremiumInvite, User, utcnow
 from .entitlements import premium_payment_matches_offer, refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
@@ -55,6 +56,7 @@ async def cmd_admin(m: Message):
     """Open the private admin panel for configured administrators only."""
     rows = [
         [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+        [InlineKeyboardButton(text="⚙️ Premium pricing & duration", callback_data="admin:offer")],
         [
             InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
             InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
@@ -78,7 +80,7 @@ async def cmd_admin(m: Message):
 
 
 @router.message(CommandStart())
-async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
+async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, redis: Redis | None = None):
     u = await get_user(session, m.from_user, command.args)
     start_args = command.args or ""
     if start_args.startswith("invite_"):
@@ -106,14 +108,18 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
             return
+    price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
+    welcome = welcome_text(u.language, stars=price, days=days)
+    if getattr(u, "is_premium", False) and getattr(u, "premium_until", None):
+        welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     await m.answer(
-        welcome_text(u.language),
+        welcome,
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
 
 
 @router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
-async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService):
+async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService, redis: Redis | None = None):
     """Handle visible quick-action labels without requiring slash-command syntax."""
     u = await get_user(session, m.from_user)
     action_label = (m.text or "").strip()
@@ -123,7 +129,11 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
     }.get(action_label)
     if action == "quick_dashboard":
-        await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+        price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
+        welcome = welcome_text(u.language, stars=price, days=days)
+        if u.is_premium and u.premium_until:
+            welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
+        await m.answer(welcome, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
     elif action == "quick_markets":
         try:
             text = market_snapshot_text(await prices.market_overview(), u.language)
@@ -151,11 +161,9 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         if u.id == settings.owner_id:
             await m.answer(tr(u.language, "premium_owner"))
             return
-        status = (
-            "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
-            if u.is_premium and u.premium_until else ""
-        )
-        await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
+        price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
+        status = premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")) if u.is_premium and u.premium_until else ""
+        await m.answer(premium_copy(u.language, price, days) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.message(Command("language"))
@@ -202,9 +210,10 @@ async def cmd_help(m: Message, session: AsyncSession):
 async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     u = await get_user(session, cb.from_user)
     if cb.message:
+        body = tr(u.language, "help_text") if cb.data == "nav:help" else welcome_text(u.language)
         try:
             await cb.message.edit_text(
-                welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language)
+                body, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language)
             )
         except TelegramBadRequest as exc:
             if "message is not modified" not in str(exc).lower():
@@ -228,7 +237,7 @@ async def cb_share(cb: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data.in_({"dash:price", "dash:gas", "dash:alerts", "dash:premium"}))
-async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService):
+async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceService, redis: Redis):
     # Acknowledge Telegram callback queries before any database/network work; Telegram expires them quickly.
     try:
         await cb.answer()
@@ -271,7 +280,10 @@ async def cb_dashboard(cb: CallbackQuery, session: AsyncSession, prices: PriceSe
         else:
             text = tr(u.language, "no_alerts")
     elif action == "premium":
-        text = premium_copy(u.language)
+        price, days = await get_offer(redis)
+        text = premium_copy(u.language, price, days)
+        if u.is_premium and u.premium_until:
+            text += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     else:
         return
 
@@ -294,10 +306,40 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         return
 
     action = (cb.data or "").split(":", 1)[1]
-    if action == "panel":
+    if action == "offer":
+        price, days = await get_offer(redis)
+        text = f"<b>⚙️ Premium offer settings</b>\nCurrent price: <b>{price} Stars</b>\nPremium duration: <b>{days} days</b>\n\nChoose a value to edit. Changes affect new invoices; existing invoices retain their quoted amount and duration."
+        rows = [
+            [InlineKeyboardButton(text="💫 Change Stars price", callback_data="admin:offer:set:price")],
+            [InlineKeyboardButton(text="📅 Change Premium days", callback_data="admin:offer:set:days")],
+            [InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")],
+        ]
+    elif action.startswith("offer:set:"):
+        field = action.rsplit(":", 1)[-1]
+        if field not in {"price", "days"}:
+            await cb.answer("Unknown Premium setting.", show_alert=True)
+            return
+        await redis.set(f"admin:offer:input:{cb.from_user.id}", field, ex=600)
+        prompt = "Send the new price in Telegram Stars (1–100000)." if field == "price" else "Send the Premium duration in days (1–3650)."
+        if cb.message:
+            await cb.message.answer(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Cancel", callback_data="admin:offer:cancel")
+            ]]))
+        await cb.answer()
+        return
+    elif action == "offer:cancel":
+        await redis.delete(f"admin:offer:input:{cb.from_user.id}")
+        if cb.message:
+            await cb.message.answer("Premium offer edit cancelled.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
+            ]]))
+        await cb.answer()
+        return
+    elif action == "panel":
         text = "<b>🛡 Admin Panel</b>\nChoose an action:"
         rows = [
             [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="⚙️ Premium pricing & duration", callback_data="admin:offer")],
             [
                 InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
                 InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
@@ -326,7 +368,9 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "/refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED — reconcile after checking Telegram\n\n"
             "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
             "Participants use /join GIVEAWAY_ID\n\n"
-            "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
+            "<b>Broadcast</b>\n/broadcast announcement text\n"
+            "Or reply to a message (text, photo, video or document) with /broadcast.\n"
+            "Preview first, then confirm; delivery targets registered, non-suspended users."
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "users":
@@ -342,7 +386,10 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "/pendingpay — list pending payments\n/verify PAYMENT_ID — verify and grant Premium\n"
             "/rejectpay PAYMENT_ID — reject payment\n/revenue — revenue by currency"
         )
-        rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
+        rows = [
+            [InlineKeyboardButton(text="🧾 Review pending payments", callback_data="admin:payments:pending")],
+            [InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")],
+        ]
     elif action == "giveaways":
         text = (
             "<b>🎁 Giveaways</b>\n/giveaway TITLE | PREMIUM_DAYS | WINNERS\n"
@@ -351,7 +398,9 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "broadcasthelp":
         text = (
-            "<b>📣 Broadcast</b>\n/broadcast your announcement\n"
+            "<b>📣 Broadcast</b>\n"
+            "Reply to any Telegram message (text, photo, video or document) with /broadcast to copy it.\n"
+            "Or send /broadcast your announcement text.\n"
             "Review the preview, then confirm. Broadcasts go to registered, non-suspended users."
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
@@ -363,13 +412,31 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         alerts = await session.scalar(
             select(func.count()).select_from(Alert).where(Alert.active.is_(True))
         ) or 0
+        suspended = await session.scalar(
+            select(func.count()).select_from(User).where(User.suspended.is_(True))
+        ) or 0
+        blocked = await session.scalar(
+            select(func.count()).select_from(User).where(User.blocked.is_(True))
+        ) or 0
+        new_users = await session.scalar(
+            select(func.count()).select_from(User).where(User.created_at >= utcnow() - timedelta(days=7))
+        ) or 0
+        pending_manual = await session.scalar(
+            select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")
+        ) or 0
         stars = await session.scalar(
             select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))
         ) or 0
         killed = "ON" if await redis.exists(KILL_KEY) else "OFF"
         text = (
-            f"<b>📊 Bot Statistics</b>\nUsers: {users}\nPremium: {premium}\n"
-            f"Active alerts: {alerts}\nStars earned: {stars}\nPause switch: {killed}"
+            f"<b>📊 Bot Statistics</b>\n"
+            f"Registered users: {users} (+{new_users} in 7 days)\n"
+            f"Premium accounts: {premium}\n"
+            f"Active alerts: {alerts}\n"
+            f"Suspended / blocked: {suspended} / {blocked}\n"
+            f"Unrefunded Telegram Stars: {stars}\n"
+            f"Pending manual payments: {pending_manual}\n"
+            f"Pause switch: {killed}"
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "pause":
@@ -398,6 +465,32 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
                 raise
     await cb.answer()
 
+
+@admin.message(F.text.regexp(r"^\\d{1,6}$"))
+async def save_offer_edit(message: Message, redis: Redis, session: AsyncSession):
+    key = f"admin:offer:input:{message.from_user.id}"
+    field = await redis.get(key)
+    if field not in {"price", "days"}:
+        return
+    try:
+        price, days = await set_offer_value(redis, field, int(message.text))
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await redis.delete(key)
+    session.add(AdminAudit(
+        admin_id=message.from_user.id, action="premium_offer_update",
+        details=f"{field}={int(message.text)}",
+    ))
+    await session.commit()
+    await message.answer(
+        f"Premium offer updated.\nPrice: <b>{price} Stars</b>\nDuration: <b>{days} days</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
+        ]]),
+    )
+
+
 # ---------- Payments (Telegram Stars) ----------
 
 def premium_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
@@ -408,51 +501,62 @@ def premium_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def premium_copy(lang: str = "en") -> str:
+def premium_copy(lang: str = "en", price: int | None = None, days: int | None = None) -> str:
+    price = settings.premium_price_stars if price is None else price
+    days = settings.premium_days if days is None else days
     return (
         tr(lang, "premium_title") + "\n\n"
         + tr(lang, "free_plan", free=settings.free_alert_limit) + "\n\n"
-        + tr(lang, "premium_plan", stars=settings.premium_price_stars, days=settings.premium_days, premium=settings.premium_alert_limit)
+        + tr(lang, "premium_plan", stars=price, days=days, premium=settings.premium_alert_limit)
         + "\n\n" + tr(lang, "pay_note")
     )
 
 
+def premium_member_status(lang: str, expiry: str) -> str:
+    if lang == "ar":
+        return (f"\n\n⭐ <b>أنت الآن عضو بريميوم</b> · الاشتراك نشط حتى {expiry} UTC.\n"
+                "مزاياك: التحليل والإشارات الكمية، لوحة السوق المباشر، حتى 500 تنبيه نشط، وتنبيهات الغاز.\n"
+                "هذه المزايا مفعّلة لحسابك؛ استخدم أزرار بريميوم في القائمة الرئيسية.")
+    return (f"\n\n⭐ <b>YOU ARE A PREMIUM MEMBER</b> · Active until {expiry} UTC.\n"
+            "Your paid benefits: Premium quantitative signals, Live Market dashboard, up to 500 active alerts, and Ethereum gas alerts.\n"
+            "These features are enabled on your account. Open them from the main menu.")
+
+
 @router.message(Command("premium"))
-async def cmd_premium(m: Message, session: AsyncSession):
+async def cmd_premium(m: Message, session: AsyncSession, redis: Redis):
     u = await get_user(session, m.from_user)
     if u.id == settings.owner_id:
         return await m.answer(tr(u.language, "premium_owner"))
-    status = (
-        "\n\n" + tr(u.language, "premium_active_status", date=u.premium_until.strftime("%Y-%m-%d"), days=settings.premium_days)
-        if u.is_premium and u.premium_until else ""
-    )
-    await m.answer(premium_copy(u.language) + status, reply_markup=premium_keyboard(u.language))
+    price, days = await get_offer(redis)
+    status = premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")) if u.is_premium and u.premium_until else ""
+    await m.answer(premium_copy(u.language, price, days) + status, reply_markup=premium_keyboard(u.language))
 
 
 @router.callback_query(F.data == "premium:buy")
-async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot):
+async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot, redis: Redis):
     await cb.answer()
     u = await get_user(session, cb.from_user)
     if u.id == settings.owner_id:
         if cb.message:
             await edit_if_changed(cb.message, tr(u.language, "premium_owner"))
         return
+    price, days = await get_offer(redis)
     await bot.send_invoice(
         chat_id=cb.from_user.id,
-        title=tr(u.language, "premium_invoice_title", days=settings.premium_days),
-        description=tr(u.language, "premium_invoice_description", limit=settings.premium_alert_limit, days=settings.premium_days),
-        payload=f"premium:{settings.premium_days}",
+        title=tr(u.language, "premium_invoice_title", days=days),
+        description=tr(u.language, "premium_invoice_description", limit=settings.premium_alert_limit, days=days),
+        payload=f"premium:{days}:{price}",
         currency="XTR",
-        prices=[LabeledPrice(label=tr(u.language, "premium_label"), amount=settings.premium_price_stars)],
+        prices=[LabeledPrice(label=tr(u.language, "premium_label"), amount=price)],
     )
 
 
 @router.pre_checkout_query()
-async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
+async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession, redis: Redis):
     u = await get_user(session, q.from_user)
+    price, days = await get_offer(redis)
     valid_invoice = premium_payment_matches_offer(
-        q.invoice_payload, q.currency, q.total_amount,
-        settings.premium_days, settings.premium_price_stars,
+        q.invoice_payload, q.currency, q.total_amount, days, price,
     )
     if valid_invoice:
         await q.answer(ok=True)
@@ -461,14 +565,14 @@ async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
 
 
 @router.message(F.successful_payment)
-async def paid(m: Message, session: AsyncSession):
+async def paid(m: Message, session: AsyncSession, redis: Redis):
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     sp = m.successful_payment
     u = await get_user(session, m.from_user)
+    current_price, current_days = await get_offer(redis)
     if not premium_payment_matches_offer(
-        sp.invoice_payload, sp.currency, sp.total_amount,
-        settings.premium_days, settings.premium_price_stars,
+        sp.invoice_payload, sp.currency, sp.total_amount, current_days, current_price,
     ):
         inserted = await session.scalar(
             pg_insert(Payment)
@@ -493,7 +597,10 @@ async def paid(m: Message, session: AsyncSession):
     )
     if u is None:
         raise RuntimeError("Payment user disappeared before entitlement update")
-    days = settings.premium_days
+    try:
+        days = int(sp.invoice_payload.split(":")[1]) if len(sp.invoice_payload.split(":")) == 3 else current_days
+    except (ValueError, IndexError):
+        days = current_days
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     expiry = base + timedelta(days=days)
     inserted = await session.scalar(
@@ -514,7 +621,8 @@ async def paid(m: Message, session: AsyncSession):
     await session.commit()
     metrics.PAYMENTS.inc()
     await m.answer(
-        tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d")),
+        tr(u.language, "payment_success", date=u.premium_until.strftime("%Y-%m-%d"))
+        + premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d")),
         reply_markup=nav_keyboard(u.id, lang=u.language),
     )
 
@@ -550,16 +658,22 @@ async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
     users = await session.scalar(select(func.count()).select_from(User)) or 0
     premium = await session.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
     alerts = await session.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
+    suspended = await session.scalar(select(func.count()).select_from(User).where(User.suspended.is_(True))) or 0
+    blocked = await session.scalar(select(func.count()).select_from(User).where(User.blocked.is_(True))) or 0
+    new_users = await session.scalar(select(func.count()).select_from(User).where(User.created_at >= utcnow() - timedelta(days=7))) or 0
+    pending_manual = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
     stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
     shared = await session.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
     referrals = await session.scalar(select(func.coalesce(func.sum(User.referrals_count), 0))) or 0
     killed = "ON" if await redis.exists(KILL_KEY) else "off"
     await m.answer(
-        f"Users: {users}\n"
+        f"Users: {users} (+{new_users} in 7 days)\n"
         f"Premium: {premium}\n"
         f"Active alerts: {alerts}\n"
-        f"Stars earned: {stars}\n"
-        f"Affiliation shared: {shared} (referrals joined: {referrals})\n"
+        f"Suspended / blocked: {suspended} / {blocked}\n"
+        f"Unrefunded Telegram Stars: {stars}\n"
+        f"Pending manual payments: {pending_manual}\n"
+        f"Affiliation shares: {shared} (referrals joined: {referrals})\n"
         f"Kill switch: {killed}"
     )
 

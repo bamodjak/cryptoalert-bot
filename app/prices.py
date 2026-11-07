@@ -26,6 +26,40 @@ class PriceError(Exception):
     pass
 
 
+def _cached_price(value: object) -> float | None:
+    """Accept only finite, positive cached quotes; ignore corrupt Redis values."""
+    if value is None:
+        return None
+    try:
+        price = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return price if math.isfinite(price) and price > 0 else None
+
+
+def _valid_coin_list(rows: object, *, minimum: int) -> bool:
+    if not isinstance(rows, list) or len(rows) < minimum:
+        return False
+    for row in rows:
+        if not isinstance(row, dict):
+            return False
+        try:
+            price = float(row["price_usd"])
+            change = float(row["change_24h"])
+            symbol = row["symbol"]
+            name = row["name"]
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return False
+        if (
+            not isinstance(symbol, str) or not symbol.strip()
+            or not isinstance(name, str) or not name.strip()
+            or not math.isfinite(price) or price <= 0
+            or not math.isfinite(change)
+        ):
+            return False
+    return True
+
+
 def _valid_global_snapshot(payload: object) -> bool:
     """Reject incomplete or non-finite market snapshots before presenting cached data."""
     if not isinstance(payload, dict):
@@ -96,8 +130,18 @@ class PriceService:
         if cached is not None:
             if cached == "":
                 return None
-            cid, name = json.loads(cached)
-            return Coin(cid, s, name)
+            try:
+                decoded = json.loads(cached)
+                if (
+                    isinstance(decoded, list) and len(decoded) == 2
+                    and all(isinstance(value, str) and value.strip() for value in decoded)
+                ):
+                    cid, name = decoded
+                    return Coin(cid, s, name)
+            except (TypeError, ValueError):
+                pass
+            log.warning("discarding malformed cached coin lookup for %s", s)
+            await self.redis.delete(key)
         data = await self._get("/search", {"query": s})
         for c in data.get("coins", []):  # already sorted by market-cap rank
             if c.get("symbol", "").lower() == s:
@@ -131,7 +175,11 @@ class PriceService:
         if not ids:
             return {}
         cached = await self.redis.mget([f"cg:px:{i}" for i in ids])
-        out = {i: float(v) for i, v in zip(ids, cached) if v is not None}
+        out = {}
+        for coin_id, raw_value in zip(ids, cached):
+            price = _cached_price(raw_value)
+            if price is not None:
+                out[coin_id] = price
         missing = [i for i in ids if i not in out]
         if not missing:
             return out
@@ -141,7 +189,10 @@ class PriceService:
         stale = {}
         if allow_stale:
             stale_values = await self.redis.mget([f"cg:px:stale:{i}" for i in missing])
-            stale = {i: float(v) for i, v in zip(missing, stale_values) if v is not None}
+            for coin_id, raw_value in zip(missing, stale_values):
+                price = _cached_price(raw_value)
+                if price is not None:
+                    stale[coin_id] = price
         try:
             rate_limited = bool(await self.redis.exists("cg:rate_limited"))
         except Exception:
@@ -321,9 +372,10 @@ class PriceService:
                 payload = json.loads(cached)
                 if (
                     isinstance(payload, dict)
-                    and isinstance(payload.get("gainers"), list) and len(payload["gainers"]) >= 5
-                    and isinstance(payload.get("losers"), list) and len(payload["losers"]) >= 5
+                    and _valid_coin_list(payload.get("gainers"), minimum=5)
+                    and _valid_coin_list(payload.get("losers"), minimum=5)
                     and isinstance(payload.get("fetched_at"), int)
+                    and payload["fetched_at"] > 0
                 ):
                     return payload
                 raise ValueError("invalid cached market movers structure")
@@ -337,9 +389,10 @@ class PriceService:
                 candidate = json.loads(stale)
                 if (
                     isinstance(candidate, dict)
-                    and isinstance(candidate.get("gainers"), list) and len(candidate["gainers"]) >= 5
-                    and isinstance(candidate.get("losers"), list) and len(candidate["losers"]) >= 5
+                    and _valid_coin_list(candidate.get("gainers"), minimum=5)
+                    and _valid_coin_list(candidate.get("losers"), minimum=5)
                     and isinstance(candidate.get("fetched_at"), int)
+                    and candidate["fetched_at"] > 0
                 ):
                     stale_payload = candidate
                 else:
@@ -413,7 +466,13 @@ class PriceService:
         if cached is not None:
             try:
                 payload = json.loads(cached)
-                if isinstance(payload, dict) and len(payload.get("coins", [])) == 33:
+                if (
+                    isinstance(payload, dict)
+                    and _valid_coin_list(payload.get("coins"), minimum=33)
+                    and len(payload["coins"]) == 33
+                    and isinstance(payload.get("fetched_at"), int)
+                    and payload["fetched_at"] > 0
+                ):
                     return payload
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached top-33 prices")
@@ -423,7 +482,13 @@ class PriceService:
         if stale is not None:
             try:
                 candidate = json.loads(stale)
-                if isinstance(candidate, dict) and candidate.get("coins"):
+                if (
+                    isinstance(candidate, dict)
+                    and _valid_coin_list(candidate.get("coins"), minimum=33)
+                    and len(candidate["coins"]) == 33
+                    and isinstance(candidate.get("fetched_at"), int)
+                    and candidate["fetched_at"] > 0
+                ):
                     stale_payload = candidate
             except (TypeError, ValueError):
                 log.warning("discarding malformed stale top-33 prices")
@@ -492,15 +557,21 @@ class PriceService:
 
     async def gas_gwei(self) -> float:
         cached = await self.redis.get("gas:gwei")
+        cached_price = _cached_price(cached)
+        if cached is not None and cached_price is not None:
+            return cached_price
         if cached is not None:
-            return float(cached)
+            log.warning("discarding invalid cached Ethereum gas quote")
+            await self.redis.delete("gas:gwei")
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         try:
             async with self.http.post(settings.eth_rpc_url, json=payload) as r:
                 r.raise_for_status()
                 data = await r.json()
             gwei = int(data["result"], 16) / 1e9
-        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, ValueError) as e:
+            if not math.isfinite(gwei) or gwei <= 0:
+                raise ValueError("RPC returned an invalid gas price")
+        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, TypeError, ValueError) as e:
             metrics.PRICE_ERRORS.inc()
             raise PriceError(f"gas RPC failed: {e}") from e
         await self.redis.set("gas:gwei", gwei, ex=25)

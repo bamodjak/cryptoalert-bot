@@ -19,7 +19,8 @@ def test_persistent_menu_is_persistent_and_uses_plain_language_actions():
 def test_inline_navigation_is_compact_and_keeps_admin_private():
     public = nav_keyboard(user_id=-1, show_back=False)
     labels = [button.text for row in public.inline_keyboard for button in row]
-    assert len(public.inline_keyboard) == 8
+    assert len(public.inline_keyboard) == 9
+    assert any(button.callback_data == "live:open" for row in public.inline_keyboard for button in row)
     assert "🛡 Admin Panel" not in labels
     assert all("Admin" not in label for label in labels)
 
@@ -76,9 +77,35 @@ def test_persistent_markets_action_uses_market_overview(monkeypatch):
             answer=AsyncMock(),
         )
 
-        await handlers.persistent_menu_action(message, None, prices)
+        await handlers.persistent_menu_action(message, None, prices, None)
 
         prices.market_overview.assert_awaited_once()
         assert message.answer.await_args.args[0] == "snapshot:123:en"
+
+    asyncio.run(scenario())
+
+
+
+def test_help_navigation_opens_help_content_instead_of_home(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.handlers as handlers
+    from app.i18n import tr
+
+    async def scenario():
+        user = SimpleNamespace(id=123, language="en")
+        monkeypatch.setattr(handlers, "get_user", AsyncMock(return_value=user))
+        message = SimpleNamespace(edit_text=AsyncMock())
+        callback = SimpleNamespace(
+            data="nav:help",
+            from_user=SimpleNamespace(id=123),
+            message=message,
+            answer=AsyncMock(),
+        )
+        await handlers.cb_home_or_back(callback, None)
+        assert message.edit_text.await_args.args[0] == tr("en", "help_text")
+        callback.answer.assert_awaited_once()
 
     asyncio.run(scenario())
