@@ -118,6 +118,12 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, r
     )
 
 
+@router.message(F.text.in_({tr(lang, "back") for lang in ("en", "ar")}))
+async def persistent_back_action(m: Message, session: AsyncSession):
+    """Return to the home screen from the persistent contextual Back key."""
+    u = await get_user(session, m.from_user)
+    await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+
 @router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
 async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService, redis: Redis | None = None):
     """Handle visible quick-action labels without requiring slash-command syntax."""
