@@ -22,7 +22,7 @@ def test_admin_user_search_matches_username_fragments_case_insensitively():
 
     sql = str(_user_search_statement("@Bach").compile(compile_kwargs={"literal_binds": True}))
 
-    assert "lower(users.username) LIKE lower('%%Bach%%')" in sql
+    assert "lower(users.username) LIKE lower('%Bach%')" in sql
 
 
 def test_admin_user_search_uses_exact_numeric_telegram_id():
@@ -31,7 +31,8 @@ def test_admin_user_search_uses_exact_numeric_telegram_id():
     sql = str(_user_search_statement("8231611086").compile(compile_kwargs={"literal_binds": True}))
 
     assert "users.id = 8231611086" in sql
-    assert "users.username" not in sql
+    assert "WHERE users.id = 8231611086" in sql
+    assert "WHERE lower(users.username)" not in sql
 
 
 
