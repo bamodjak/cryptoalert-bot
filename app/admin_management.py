@@ -97,7 +97,10 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
     cards = [await _user_card(session, u) for u in users]
     title = {"all": "All registered users", "premium": "Premium users", "free": "Free users"}[mode]
     text = f"<b>👥 {title}</b>\nTotal: {total} · Page {page + 1}/{page_count}\n\n" + ("\n\n".join(cards) if cards else "No users on this page.")
-    rows = []
+    rows = [
+        [InlineKeyboardButton(text=f"🎁 Grant Premium · {u.first_name or u.username or u.id}", callback_data=f"um:grantone:{u.id}")]
+        for u in users
+    ]
     if page > 0 or page + 1 < page_count:
         nav = []
         if page > 0:
@@ -291,7 +294,10 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
         stmt = select(User).where(User.id == int(q)) if q.isdigit() else select(User).where(User.username.ilike(q)).limit(10)
         users = list((await session.scalars(stmt.limit(10))).all())
         if not users:
-            await m.answer("No registered user found. They must have pressed Start at least once.")
+            await m.answer(
+                "No registered user found. They must have pressed Start at least once.",
+                reply_markup=_kb([_back()]),
+            )
             return
         rows = []
         cards = []
@@ -299,7 +305,12 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
             cards.append(await _user_card(session, u))
             rows.append([InlineKeyboardButton(text=f"Grant Premium · {u.id}", callback_data=f"um:grantone:{u.id}")])
         rows.append(_back())
-        await m.answer("\n\n".join(cards), reply_markup=_kb(rows))
+        await m.answer(
+            "<b>Search results</b>\nChoose an account to grant Premium:",
+            reply_markup=_kb(rows),
+        )
+        for card in cards:
+            await m.answer(card)
         return
 
     if state.get("state") == "grant_days":
