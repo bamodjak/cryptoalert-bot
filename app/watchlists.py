@@ -1,5 +1,7 @@
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -19,6 +21,10 @@ MAX_WATCHLIST_ITEMS = 10
 SUPPORTED = tuple((asset.symbol, asset.name) for asset in CORE_ASSETS)
 
 
+class CustomAssetInput(StatesGroup):
+    waiting_for_coingecko_id = State()
+
+
 def _label(language: str, english: str, arabic: str) -> str:
     return arabic if language == "ar" else english
 
@@ -32,6 +38,7 @@ def watchlist_keyboard(rows: list[Watchlist], language: str = "en") -> InlineKey
         for row in rows
     ]
     buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add asset", "＋ إضافة أصل"), callback_data="wl:add")])
+    buttons.append([InlineKeyboardButton(text=_label(language, "＋ Add another crypto (Premium)", "＋ إضافة عملة أخرى (بريميوم)"), callback_data="wl:addcustom")])
     buttons.append([InlineKeyboardButton(text=_label(language, "⌂ Dashboard", "⌂ الرئيسية"), callback_data="nav:home")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -92,6 +99,67 @@ async def cb_watchlist_add(callback: CallbackQuery, session: AsyncSession):
         )
     await callback.answer()
 
+
+@router.callback_query(F.data == "wl:addcustom")
+async def cb_watchlist_add_custom(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
+    user = await get_user(session, callback.from_user)
+    if not user.is_premium:
+        await callback.answer("Custom assets are available to Premium members. Use /premium.", show_alert=True)
+        return
+    await state.set_state(CustomAssetInput.waiting_for_coingecko_id)
+    if callback.message:
+        await callback.message.answer(
+            "Add a crypto to your Watchlist (Premium)\n\n"
+            "1. Open https://www.coingecko.com/en/coins\n"
+            "2. Search the exact project name and open its page.\n"
+            "3. Copy the final part of its URL (the CoinGecko ID).\n"
+            "   Example: https://www.coingecko.com/en/coins/bitcoin → bitcoin\n"
+            "4. Send only that ID here.\n\n"
+            "I will verify the asset name, ticker and price before adding it. Send /cancel to stop."
+        )
+    await callback.answer()
+
+
+@router.message(CustomAssetInput.waiting_for_coingecko_id)
+async def receive_custom_asset_id(message: Message, session: AsyncSession, prices: PriceService, state: FSMContext):
+    user = await get_user(session, message.from_user)
+    if not user.is_premium:
+        await state.clear()
+        await message.answer("Custom assets are a Premium feature. Use /premium.")
+        return
+    asset_id = (message.text or "").strip().lower()
+    import re
+    if not re.fullmatch(r"[a-z0-9-]{1,80}", asset_id):
+        await message.answer("Invalid ID format. Send the CoinGecko ID only, or /cancel.")
+        return
+    try:
+        metadata = await prices._get(f"/coins/{asset_id}", {"localization":"false","tickers":"false","market_data":"false","community_data":"false","developer_data":"false","sparkline":"false"})
+        coin_name = str(metadata.get("name") or "").strip()
+        symbol = str(metadata.get("symbol") or "").strip().lower()
+        canonical_id = str(metadata.get("id") or "").strip().lower()
+        if canonical_id != asset_id or not coin_name or not re.fullmatch(r"[a-z0-9]{1,12}", symbol):
+            raise ValueError("Incomplete asset metadata")
+        quotes = await prices.prices([canonical_id])
+        if canonical_id not in quotes:
+            raise PriceError("No current quote for this asset")
+    except (PriceError, ValueError, KeyError, TypeError):
+        await message.answer("Could not verify that CoinGecko ID or retrieve a current USD price. Check the ID and try again, or /cancel.")
+        return
+    await session.scalar(select(User).where(User.id == user.id).with_for_update())
+    rows = list((await session.scalars(select(Watchlist).where(Watchlist.user_id == user.id))).all())
+    if any(row.coin_id == canonical_id for row in rows):
+        await state.clear()
+        await message.answer(f"{coin_name} ({symbol.upper()}) is already in your Watchlist.")
+        return
+    if len(rows) >= MAX_WATCHLIST_ITEMS:
+        await state.clear()
+        await message.answer(f"Your Watchlist is full ({MAX_WATCHLIST_ITEMS} assets). Remove one before adding another.")
+        return
+    await session.execute(pg_insert(Watchlist).values(user_id=user.id, coin_id=canonical_id, symbol=symbol).on_conflict_do_nothing(constraint="uq_watchlist_user_coin"))
+    await session.flush()
+    await state.clear()
+    text, keyboard = await render_watchlist(session, user, prices)
+    await message.answer(f"Verified and added <b>{coin_name}</b> ({symbol.upper()})\n\n{text}", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("wl:add:"))
 async def cb_watchlist_add_asset(callback: CallbackQuery, session: AsyncSession, prices: PriceService):
