@@ -137,7 +137,7 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
         rows.append(nav)
     rows += [
         [InlineKeyboardButton(text="🔎 Find by ID / username", callback_data="um:find")],
-        [InlineKeyboardButton(text="🎁 Grant Premium to user(s)", callback_data="um:grant")],
+        [InlineKeyboardButton(text="🎁 Bulk grant by Telegram ID", callback_data="um:grant")],
         [InlineKeyboardButton(text="📤 Export registered users (CSV)", callback_data="um:export:users")],
         [InlineKeyboardButton(text="🔗 Export invitation links (CSV)", callback_data="um:export:invites")],
         [InlineKeyboardButton(text="➕ Add days to ALL users", callback_data="um:all")],
@@ -373,7 +373,7 @@ async def start_grant(cb: CallbackQuery, redis: Redis):
         if all_users:
             await cb.message.answer("You chose ALL registered users. Send the number of days to add (1–3650). A confirmation will appear before anything changes.")
         else:
-            await cb.message.answer("Send Telegram IDs, one per line. You can paste multiple IDs. Only registered users will be changed. Send /cancel to stop.")
+            await cb.message.answer("Send Telegram IDs, one per line. This bulk action can also create invitation records for IDs that have not started the bot. Send /cancel to stop.")
 
 
 @router.message(F.text)
