@@ -1,4 +1,4 @@
-from app.admin_management import _grant_user_button
+from app.admin_management import _access_button, _grant_user_button
 from app.db import User
 
 
@@ -32,3 +32,22 @@ def test_admin_user_search_uses_exact_numeric_telegram_id():
 
     assert "users.id = 8231611086" in sql
     assert "users.username" not in sql
+
+
+
+def test_user_access_button_switches_between_suspend_and_restore():
+    active = _access_button(User(id=101, suspended=False))
+    suspended = _access_button(User(id=102, suspended=True))
+
+    assert active.text == "🔒 Suspend access"
+    assert active.callback_data == "um:access:101:suspend"
+    assert suspended.text == "🔓 Restore access"
+    assert suspended.callback_data == "um:access:102:restore"
+
+
+def test_access_changes_require_a_separate_confirmation_callback():
+    from app.admin_management import router
+
+    callbacks = [handler.callback.__name__ for handler in router.callback_query.handlers]
+    assert "request_access_change" in callbacks
+    assert "confirm_access_change" in callbacks
