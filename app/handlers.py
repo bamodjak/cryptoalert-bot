@@ -466,7 +466,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
     await cb.answer()
 
 
-@admin.message(F.text.regexp(r"^\\d{1,6}$"))
+@admin.message(F.text.regexp(r"^\d{1,6}$"))
 async def save_offer_edit(message: Message, redis: Redis, session: AsyncSession):
     key = f"admin:offer:input:{message.from_user.id}"
     field = await redis.get(key)
