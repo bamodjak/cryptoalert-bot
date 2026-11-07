@@ -80,7 +80,7 @@ async def cmd_admin(m: Message):
 
 
 @router.message(CommandStart())
-async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
+async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, redis: Redis | None = None):
     u = await get_user(session, m.from_user, command.args)
     start_args = command.args or ""
     if start_args.startswith("invite_"):
@@ -108,7 +108,8 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
             return
-    welcome = welcome_text(u.language)
+    price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
+    welcome = welcome_text(u.language, stars=price, days=days)
     if getattr(u, "is_premium", False) and getattr(u, "premium_until", None):
         welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     await m.answer(
@@ -128,7 +129,8 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
     }.get(action_label)
     if action == "quick_dashboard":
-        welcome = welcome_text(u.language)
+        price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
+        welcome = welcome_text(u.language, stars=price, days=days)
         if u.is_premium and u.premium_until:
             welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
         await m.answer(welcome, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
