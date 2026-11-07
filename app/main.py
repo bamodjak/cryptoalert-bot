@@ -201,7 +201,16 @@ def build_web_app(redis: Redis) -> web.Application:
         )
 
     async def admin_dashboard(_: web.Request) -> web.Response:
-        return web.Response(text=ADMIN_DASHBOARD_HTML, content_type="text/html")
+        return web.Response(
+            text=ADMIN_DASHBOARD_HTML,
+            content_type="text/html",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            },
+        )
 
     app = web.Application()
     app.router.add_get("/", root)
