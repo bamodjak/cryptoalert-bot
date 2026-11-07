@@ -163,7 +163,7 @@ async def manualpay_cmd(m: Message, command: CommandObject, session: AsyncSessio
     await m.answer(f"Manual payment #{payment.id} saved as PENDING. It grants no Premium until verified with /verify {payment.id}.")
 
 
-@router.callback_query(F.data.regexp(r"^admin:payments:pending(?::\\d+)?$"))
+@router.callback_query(F.data.regexp(r"^admin:payments:pending(?::\d+)?$"))
 async def pending_payments_panel(cb: CallbackQuery, session: AsyncSession):
     try:
         page = int((cb.data or "admin:payments:pending").rsplit(":", 1)[1]) if (cb.data or "").count(":") == 3 else 0
