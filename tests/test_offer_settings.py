@@ -82,7 +82,7 @@ def test_admin_panel_exposes_premium_offer_controls(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_admin_offer_price_action_starts_a_scoped_edit_prompt():
+def test_admin_offer_price_action_starts_a_scoped_edit_prompt(monkeypatch):
     from types import SimpleNamespace
     import asyncio
     from unittest.mock import AsyncMock
