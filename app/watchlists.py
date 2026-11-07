@@ -15,7 +15,7 @@ from .users import get_user
 from .parsing import fmt_usd
 from .prices import PriceError, PriceService
 from .i18n import tr
-from .keyboards import edit_message_if_changed, nav_keyboard
+from .keyboards import edit_message_if_changed
 
 router = Router(name="watchlists")
 MAX_WATCHLIST_ITEMS = 10
@@ -132,6 +132,7 @@ async def cb_watchlist_add_custom(callback: CallbackQuery, session: AsyncSession
             )
         return
     await state.set_state(CustomAssetInput.waiting_for_search)
+    await state.update_data(custom_asset_language=user.language)
     if callback.message:
         await callback.message.answer(tr(user.language, "custom_asset_search_prompt"))
 
@@ -149,10 +150,12 @@ async def cancel_custom_asset_search(callback: CallbackQuery, state: FSMContext,
 
 
 @router.message(CustomAssetInput.waiting_for_search, Command("cancel"))
-async def cancel_custom_asset_input(message: Message, session: AsyncSession, state: FSMContext):
+async def cancel_custom_asset_input(message: Message, state: FSMContext):
+    get_data = getattr(state, "get_data", None)
+    data = await get_data() if callable(get_data) else {}
+    language = data.get("custom_asset_language", "en") if isinstance(data, dict) else "en"
     await state.clear()
-    user = await get_user(session, message.from_user)
-    await message.answer(tr(user.language, "custom_asset_cancelled"), reply_markup=nav_keyboard(user.id, lang=user.language))
+    await message.answer(tr(language, "custom_asset_cancelled"))
 
 
 @router.message(CustomAssetInput.waiting_for_search, F.text, ~F.text.startswith("/"))
