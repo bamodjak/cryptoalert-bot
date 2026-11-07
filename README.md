@@ -19,7 +19,7 @@
 - Premium live-market ticks are kept in process memory and dashboard edits are coalesced to a 10-second cadence to avoid burning Redis request quota on every exchange trade
 
 **Operations and safety**
-- PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint and Prometheus metrics
+- PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint, Prometheus metrics and a token-gated read-only web operations dashboard at `/dashboard`
 - Admin-only user management, Premium grants, reversible suspension, payment review, giveaways, broadcast confirmation and kill switch
 - Admin overview reports registrations (including 7-day growth), Premium accounts, active alerts, suspended/blocked accounts, unrefunded Stars and pending manual payments
 - Anti-spam throttling and idempotent Telegram Stars payment handling
@@ -69,10 +69,11 @@ Required environment:
 - `REDIS_URL` — Render Redis internal URL.
 - `POSTGRES_PASSWORD` is only needed for the Docker Compose self-hosted database; it is not used by the managed Render database.
 
-Optional settings include `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`. Leave `WEBHOOK_BASE_URL` empty for the default polling mode. Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
+Optional settings include `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`. Set a strong `METRICS_TOKEN` to enable `/dashboard`, `/stats.json` and `/metrics`; the dashboard asks for the token per session and does not persist it. Leave `WEBHOOK_BASE_URL` empty for the default polling mode. Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
 
 After deployment, verify:
 - `/` returns the service landing response.
+- `/dashboard` serves the read-only operations overview; enter the configured `METRICS_TOKEN` to load protected statistics.
 - `/health` returns HTTP 200 and reports Telegram transport and worker readiness.
 - The bot responds to `/start` in Telegram.
 - Render logs show successful database migrations, router registration and Telegram polling.
