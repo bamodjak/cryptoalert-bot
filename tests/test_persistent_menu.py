@@ -109,3 +109,77 @@ def test_help_navigation_opens_help_content_instead_of_home(monkeypatch):
         callback.answer.assert_awaited_once()
 
     asyncio.run(scenario())
+
+
+
+def test_home_navigation_acknowledges_callback_before_database_lookup(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    import app.handlers as handlers
+
+    async def scenario():
+        events = []
+        user = SimpleNamespace(id=123, language="en")
+
+        async def get_user_first(*args, **kwargs):
+            events.append("get_user")
+            return user
+
+        async def answer_first():
+            events.append("answer")
+
+        async def edit_first(*args, **kwargs):
+            events.append("edit")
+
+        monkeypatch.setattr(handlers, "get_user", get_user_first)
+        message = SimpleNamespace(edit_text=edit_first)
+        callback = SimpleNamespace(
+            data="nav:home",
+            from_user=SimpleNamespace(id=123),
+            message=message,
+            answer=answer_first,
+        )
+
+        await handlers.cb_home_or_back(callback, None)
+        assert events[0] == "answer"
+        assert events.index("answer") < events.index("get_user")
+        assert "edit" in events
+
+    asyncio.run(scenario())
+
+
+def test_home_navigation_sends_fresh_dashboard_if_submenu_message_cannot_be_edited(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from aiogram.exceptions import TelegramBadRequest
+
+    import app.handlers as handlers
+    from app.i18n import welcome_text
+
+    async def scenario():
+        user = SimpleNamespace(id=123, language="en")
+        monkeypatch.setattr(handlers, "get_user", AsyncMock(return_value=user))
+        message = SimpleNamespace(
+            edit_text=AsyncMock(side_effect=TelegramBadRequest(method=object(), message="message can't be edited")),
+            answer=AsyncMock(),
+            edit_reply_markup=AsyncMock(),
+        )
+        callback = SimpleNamespace(
+            data="nav:home",
+            from_user=SimpleNamespace(id=123),
+            message=message,
+            answer=AsyncMock(),
+        )
+
+        await handlers.cb_home_or_back(callback, None)
+
+        message.answer.assert_awaited_once()
+        assert message.answer.await_args.args[0] == welcome_text("en")
+        assert message.answer.await_args.kwargs["reply_markup"] is not None
+        message.edit_reply_markup.assert_awaited_once_with(reply_markup=None)
+        callback.answer.assert_awaited_once()
+
+    asyncio.run(scenario())
