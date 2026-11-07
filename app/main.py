@@ -257,8 +257,8 @@ async def run_polling_with_lock(
     dispatcher: Dispatcher, bot: Bot, redis: Redis, stop: asyncio.Event
 ) -> None:
     """Run exactly one Telegram getUpdates consumer across overlapping deployments."""
-    # Give Render time to mark the new HTTP instance healthy and retire the old
-    # pre-lock instance during the first rollout of this protection.
+    # Allow the new HTTP instance to become healthy and the old instance to
+    # retire during a rolling deployment before acquiring the polling lease.
     if POLLING_STARTUP_GRACE_SECONDS:
         log.info("Waiting %ss for rolling-deploy handoff before Telegram polling", POLLING_STARTUP_GRACE_SECONDS)
         try:
