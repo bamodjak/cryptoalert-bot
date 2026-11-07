@@ -301,7 +301,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
     if state.get("state") == "find":
         await redis.delete(key)
         q = raw.lstrip("@")
-        stmt = select(User).where(User.id == int(q)) if q.isdigit() else select(User).where(User.username.ilike(q)).limit(10)
+        stmt = select(User).where(User.id == int(q)) if q.isdigit() else select(User).where(User.username.ilike(f"%{q}%")).limit(10)
         users = list((await session.scalars(stmt.limit(10))).all())
         if not users:
             await m.answer(
