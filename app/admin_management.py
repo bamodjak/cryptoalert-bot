@@ -35,6 +35,16 @@ def _back():
     return [InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]
 
 
+def _grant_user_button(user: User) -> InlineKeyboardButton:
+    """Build a compact, directly actionable Premium grant choice."""
+    label = (user.first_name or user.username or str(user.id)).strip()
+    label = label[:36]
+    return InlineKeyboardButton(
+        text=f"🎁 Grant Premium · {label}",
+        callback_data=f"um:grantone:{user.id}",
+    )
+
+
 async def _premium_kind(session: AsyncSession, u: User) -> str:
     now = utcnow()
     if u.id == settings.owner_id:
@@ -98,7 +108,7 @@ async def _show_users(target, session: AsyncSession, page: int = 0, mode: str = 
     title = {"all": "All registered users", "premium": "Premium users", "free": "Free users"}[mode]
     text = f"<b>👥 {title}</b>\nTotal: {total} · Page {page + 1}/{page_count}\n\n" + ("\n\n".join(cards) if cards else "No users on this page.")
     rows = [
-        [InlineKeyboardButton(text=f"🎁 Grant Premium · {u.first_name or u.username or u.id}", callback_data=f"um:grantone:{u.id}")]
+        [_grant_user_button(u)]
         for u in users
     ]
     if page > 0 or page + 1 < page_count:
@@ -303,7 +313,7 @@ async def handle_admin_text(m: Message, session: AsyncSession, redis: Redis):
         cards = []
         for u in users:
             cards.append(await _user_card(session, u))
-            rows.append([InlineKeyboardButton(text=f"Grant Premium · {u.id}", callback_data=f"um:grantone:{u.id}")])
+            rows.append([_grant_user_button(u)])
         rows.append(_back())
         await m.answer(
             "<b>Search results</b>\nChoose an account to grant Premium:",
