@@ -326,7 +326,9 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             "/refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED — reconcile after checking Telegram\n\n"
             "<b>Giveaways</b>\n/giveaway TITLE | DAYS | WINNERS\n/draw GIVEAWAY_ID\n"
             "Participants use /join GIVEAWAY_ID\n\n"
-            "<b>Broadcast</b>\n/broadcast announcement text\nPreview first, then confirm."
+            "<b>Broadcast</b>\n/broadcast announcement text\n"
+            "Or reply to a message (text, photo, video or document) with /broadcast.\n"
+            "Preview first, then confirm; delivery targets registered, non-suspended users."
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "users":
