@@ -49,3 +49,13 @@ def test_interactive_fsm_state_has_a_bounded_lifetime():
     from app.main import FSM_STATE_TTL
 
     assert FSM_STATE_TTL == timedelta(minutes=30)
+
+
+def test_alert_fsm_text_filter_does_not_swallow_slash_commands():
+    from app.alert_handlers import is_non_command_text
+
+    assert is_non_command_text(SimpleNamespace(text="125.50"))
+    assert not is_non_command_text(SimpleNamespace(text="/help"))
+    assert not is_non_command_text(SimpleNamespace(text="/start"))
+    assert not is_non_command_text(SimpleNamespace(text="/cancel"))
+    assert not is_non_command_text(SimpleNamespace(text=None))
