@@ -306,6 +306,27 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
             [InlineKeyboardButton(text="📅 Change Premium days", callback_data="admin:offer:set:days")],
             [InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")],
         ]
+    elif action.startswith("offer:set:"):
+        field = action.rsplit(":", 1)[-1]
+        if field not in {"price", "days"}:
+            await cb.answer("Unknown Premium setting.", show_alert=True)
+            return
+        await redis.set(f"admin:offer:input:{cb.from_user.id}", field, ex=600)
+        prompt = "Send the new price in Telegram Stars (1–100000)." if field == "price" else "Send the Premium duration in days (1–3650)."
+        if cb.message:
+            await cb.message.answer(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Cancel", callback_data="admin:offer:cancel")
+            ]]))
+        await cb.answer()
+        return
+    elif action == "offer:cancel":
+        await redis.delete(f"admin:offer:input:{cb.from_user.id}")
+        if cb.message:
+            await cb.message.answer("Premium offer edit cancelled.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
+            ]]))
+        await cb.answer()
+        return
     elif action == "panel":
         text = "<b>🛡 Admin Panel</b>\nChoose an action:"
         rows = [
