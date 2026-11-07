@@ -106,3 +106,11 @@ def test_suspend_confirmation_updates_access_and_audits_action():
     session.add.assert_called_once()
     session.commit.assert_awaited_once()
     assert "suspended" in message.edit_text.await_args.args[0].lower()
+
+
+def test_empty_admin_user_search_never_matches_everyone():
+    from app.admin_management import _user_search_statement
+
+    sql = str(_user_search_statement(" @ ").compile(compile_kwargs={"literal_binds": True}))
+    assert "users.id = -1" in sql
+    assert "LIKE lower('%%')" not in sql
