@@ -450,11 +450,11 @@ def tr(language: str | None, key: str, **values) -> str:
     return template.format(**values) if values else template
 
 
-def welcome_text(language: str | None) -> str:
+def welcome_text(language: str | None, stars: int | None = None, days: int | None = None) -> str:
     return tr(
         language, "welcome",
         free=settings.free_alert_limit,
         premium=settings.premium_alert_limit,
-        stars=settings.premium_price_stars,
-        days=settings.premium_days,
+        stars=settings.premium_price_stars if stars is None else stars,
+        days=settings.premium_days if days is None else days,
     )
