@@ -155,3 +155,16 @@ def test_verify_command_logs_notification_failure_after_committing_payment(caplo
     import asyncio
     asyncio.run(scenario())
     assert "could not notify user 45 after manual payment verification via /verify" in caplog.text
+
+
+def test_premium_offer_numeric_input_handler_matches_plain_integer_messages():
+    from app.handlers import admin
+
+    handler = next(
+        h for h in admin.message.handlers
+        if h.callback.__name__ == "save_offer_edit"
+    )
+    magic = handler.filters[0].magic
+    assert magic.resolve(SimpleNamespace(text="150")) is not None
+    assert magic.resolve(SimpleNamespace(text="100000")) is not None
+    assert magic.resolve(SimpleNamespace(text="150x")) is None
