@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics
 from .config import settings
-from .db import AdminAudit, Alert, Payment, PremiumInvite, User, utcnow
+from .db import AdminAudit, Alert, ManualPayment, Payment, PremiumInvite, User, utcnow
 from .entitlements import premium_payment_matches_offer, refundable_unused_duration
 from .middlewares import KILL_KEY
 from .i18n import tr, welcome_text
@@ -365,13 +365,31 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         alerts = await session.scalar(
             select(func.count()).select_from(Alert).where(Alert.active.is_(True))
         ) or 0
+        suspended = await session.scalar(
+            select(func.count()).select_from(User).where(User.suspended.is_(True))
+        ) or 0
+        blocked = await session.scalar(
+            select(func.count()).select_from(User).where(User.blocked.is_(True))
+        ) or 0
+        new_users = await session.scalar(
+            select(func.count()).select_from(User).where(User.created_at >= utcnow() - timedelta(days=7))
+        ) or 0
+        pending_manual = await session.scalar(
+            select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")
+        ) or 0
         stars = await session.scalar(
             select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))
         ) or 0
         killed = "ON" if await redis.exists(KILL_KEY) else "OFF"
         text = (
-            f"<b>📊 Bot Statistics</b>\nUsers: {users}\nPremium: {premium}\n"
-            f"Active alerts: {alerts}\nStars earned: {stars}\nPause switch: {killed}"
+            f"<b>📊 Bot Statistics</b>\n"
+            f"Registered users: {users} (+{new_users} in 7 days)\n"
+            f"Premium accounts: {premium}\n"
+            f"Active alerts: {alerts}\n"
+            f"Suspended / blocked: {suspended} / {blocked}\n"
+            f"Unrefunded Telegram Stars: {stars}\n"
+            f"Pending manual payments: {pending_manual}\n"
+            f"Pause switch: {killed}"
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "pause":
@@ -552,16 +570,22 @@ async def cmd_stats(m: Message, session: AsyncSession, redis: Redis):
     users = await session.scalar(select(func.count()).select_from(User)) or 0
     premium = await session.scalar(select(func.count()).select_from(User).where((User.premium_until > utcnow()) | (User.id == settings.owner_id))) or 0
     alerts = await session.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
+    suspended = await session.scalar(select(func.count()).select_from(User).where(User.suspended.is_(True))) or 0
+    blocked = await session.scalar(select(func.count()).select_from(User).where(User.blocked.is_(True))) or 0
+    new_users = await session.scalar(select(func.count()).select_from(User).where(User.created_at >= utcnow() - timedelta(days=7))) or 0
+    pending_manual = await session.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
     stars = await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
     shared = await session.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
     referrals = await session.scalar(select(func.coalesce(func.sum(User.referrals_count), 0))) or 0
     killed = "ON" if await redis.exists(KILL_KEY) else "off"
     await m.answer(
-        f"Users: {users}\n"
+        f"Users: {users} (+{new_users} in 7 days)\n"
         f"Premium: {premium}\n"
         f"Active alerts: {alerts}\n"
-        f"Stars earned: {stars}\n"
-        f"Affiliation shared: {shared} (referrals joined: {referrals})\n"
+        f"Suspended / blocked: {suspended} / {blocked}\n"
+        f"Unrefunded Telegram Stars: {stars}\n"
+        f"Pending manual payments: {pending_manual}\n"
+        f"Affiliation shares: {shared} (referrals joined: {referrals})\n"
         f"Kill switch: {killed}"
     )
 
