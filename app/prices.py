@@ -26,6 +26,17 @@ class PriceError(Exception):
     pass
 
 
+def _cached_price(value: object) -> float | None:
+    """Accept only finite, positive cached quotes; ignore corrupt Redis values."""
+    if value is None:
+        return None
+    try:
+        price = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return price if math.isfinite(price) and price > 0 else None
+
+
 def _valid_global_snapshot(payload: object) -> bool:
     """Reject incomplete or non-finite market snapshots before presenting cached data."""
     if not isinstance(payload, dict):
@@ -131,7 +142,11 @@ class PriceService:
         if not ids:
             return {}
         cached = await self.redis.mget([f"cg:px:{i}" for i in ids])
-        out = {i: float(v) for i, v in zip(ids, cached) if v is not None}
+        out = {}
+        for coin_id, raw_value in zip(ids, cached):
+            price = _cached_price(raw_value)
+            if price is not None:
+                out[coin_id] = price
         missing = [i for i in ids if i not in out]
         if not missing:
             return out
@@ -141,7 +156,10 @@ class PriceService:
         stale = {}
         if allow_stale:
             stale_values = await self.redis.mget([f"cg:px:stale:{i}" for i in missing])
-            stale = {i: float(v) for i, v in zip(missing, stale_values) if v is not None}
+            for coin_id, raw_value in zip(missing, stale_values):
+                price = _cached_price(raw_value)
+                if price is not None:
+                    stale[coin_id] = price
         try:
             rate_limited = bool(await self.redis.exists("cg:rate_limited"))
         except Exception:
