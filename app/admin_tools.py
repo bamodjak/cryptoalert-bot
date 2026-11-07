@@ -540,7 +540,7 @@ async def broadcast_cmd(m: Message, command: CommandObject, redis: Redis, bot: B
             "Preview above. It will be copied to all registered, non-suspended users.",
         )
     payload_key = f"admin:broadcast:payload:{m.chat.id}:{preview_message.message_id}"
-    await redis.set(payload_key, json.dumps(payload), ex=3600)
+    await redis.set(payload_key, json.dumps(payload), ex=86400)
 
 
 @router.callback_query(F.data == "admin:broadcast:cancel")
@@ -550,7 +550,9 @@ async def cancel_broadcast(cb: CallbackQuery, redis: Redis):
         return
     if cb.message:
         payload_key = f"admin:broadcast:payload:{cb.message.chat.id}:{cb.message.message_id}"
-        await redis.delete(payload_key)
+        progress_key = f"admin:broadcast:sent:{cb.message.chat.id}:{cb.message.message_id}"
+        lock_key = f"admin:broadcast:lock:{cb.message.chat.id}:{cb.message.message_id}"
+        await redis.delete(payload_key, progress_key, lock_key)
         await edit_message_if_changed(cb.message, "Broadcast cancelled.")
     await cb.answer()
 
