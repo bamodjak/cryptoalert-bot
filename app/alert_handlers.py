@@ -22,7 +22,7 @@ from .prices import PriceError, PriceService
 from .users import get_user
 
 log = logging.getLogger(__name__)
-alert_def premium_limit_keyboard(language: str = "en") -> InlineKeyboardMarkup:
+def premium_limit_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     """Offer a clear, optional plan-comparison route at Premium limits."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=tr(language, "premium_compare"), callback_data="dash:premium")],
@@ -30,7 +30,7 @@ alert_def premium_limit_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-router = Router(name="alerts")
+alert_router = Router(name="alerts")
 
 
 def is_non_command_text(message: Message) -> bool:
