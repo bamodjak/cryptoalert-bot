@@ -176,6 +176,9 @@ def test_read_only_operations_dashboard_is_served_without_embedded_credentials()
 
     response = asyncio.run(run())
     assert response.status == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     assert "Orbsat · Operations" in response.text
     assert "METRICS_TOKEN" in response.text
     assert "localStorage" not in response.text
