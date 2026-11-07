@@ -5,7 +5,7 @@ import logging
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -174,11 +174,21 @@ async def cb_mover_asset(cb: CallbackQuery, session: AsyncSession, prices: Price
     await cb.answer()
 
 
+def advisor_preview_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=tr(language, "advisor_preview_cta"), callback_data="dash:premium")],
+        [InlineKeyboardButton(text=tr(language, "home"), callback_data="nav:home")],
+    ])
+
+
 @market_router.message(Command("signals"))
 async def cmd_signals(m: Message, session: AsyncSession, prices: PriceService, redis: Redis):
     u = await get_user(session, m.from_user)
     if not u.is_premium:
-        return await m.answer(tr(u.language, "advisor_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await m.answer(
+            tr(u.language, "advisor_premium_only"),
+            reply_markup=advisor_preview_keyboard(u.language),
+        )
     try:
         rows = await build_advisory(prices.http, redis)
         text = format_advisory(rows, u.language)
@@ -195,7 +205,11 @@ async def cb_advisor(cb: CallbackQuery, session: AsyncSession, prices: PriceServ
     if not cb.message:
         return
     if not u.is_premium:
-        return await edit_message_if_changed(cb.message, tr(u.language, "advisor_premium_only"), reply_markup=nav_keyboard(u.id, lang=u.language))
+        return await edit_message_if_changed(
+            cb.message,
+            tr(u.language, "advisor_premium_only"),
+            reply_markup=advisor_preview_keyboard(u.language),
+        )
     try:
         rows = await build_advisory(prices.http, redis)
         text = format_advisory(rows, u.language)
