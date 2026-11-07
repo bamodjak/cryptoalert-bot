@@ -156,3 +156,16 @@ def test_live_dashboard_navigation_rejects_free_users():
     assert callback.answer.await_args.kwargs["show_alert"] is True
     message.answer.assert_not_awaited()
     prices.prices.assert_not_awaited()
+
+
+
+def test_main_navigation_exposes_live_market_in_both_languages(monkeypatch):
+    from app.config import settings
+    from app.keyboards import nav_keyboard
+
+    monkeypatch.setattr(settings, "admin_id_set", frozenset())
+    for language, expected in (("en", "📡 Live Market"), ("ar", "📡 السوق المباشر")):
+        markup = nav_keyboard(123, lang=language)
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        live = next(button for button in buttons if button.callback_data == "live:open")
+        assert live.text == expected
