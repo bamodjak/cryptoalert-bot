@@ -19,7 +19,8 @@ def test_persistent_menu_is_persistent_and_uses_plain_language_actions():
 def test_inline_navigation_is_compact_and_keeps_admin_private():
     public = nav_keyboard(user_id=-1, show_back=False)
     labels = [button.text for row in public.inline_keyboard for button in row]
-    assert len(public.inline_keyboard) == 8
+    assert len(public.inline_keyboard) == 9
+    assert any(button.callback_data == "live:open" for row in public.inline_keyboard for button in row)
     assert "🛡 Admin Panel" not in labels
     assert all("Admin" not in label for label in labels)
 
