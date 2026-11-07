@@ -105,12 +105,11 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, r
                 "Your Premium access is attached to this Telegram account."
             )
             await m.answer(
-                welcome_text(u.language) + premium_note,
+                await dashboard_welcome(u.language, redis) + premium_note,
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
             return
-    price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
-    welcome = welcome_text(u.language, stars=price, days=days)
+    welcome = await dashboard_welcome(u.language, redis)
     if getattr(u, "is_premium", False) and getattr(u, "premium_until", None):
         welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     await m.answer(
@@ -120,10 +119,10 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, r
 
 
 @router.message(F.text.in_({tr(lang, "back") for lang in ("en", "ar")}))
-async def persistent_back_action(m: Message, session: AsyncSession):
-    """Return to the home screen from the persistent contextual Back key."""
+async def persistent_back_action(m: Message, session: AsyncSession, redis: Redis | None = None):
+    """Return to the home screen using the current Premium offer."""
     u = await get_user(session, m.from_user)
-    await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+    await m.answer(await dashboard_welcome(u.language, redis), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
 
 @router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
 async def persistent_menu_action(m: Message, session: AsyncSession, prices: PriceService, redis: Redis | None = None):
@@ -136,8 +135,7 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
     }.get(action_label)
     if action == "quick_dashboard":
-        price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
-        welcome = welcome_text(u.language, stars=price, days=days)
+        welcome = await dashboard_welcome(u.language, redis)
         if u.is_premium and u.premium_until:
             welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
         await m.answer(welcome, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
@@ -186,7 +184,7 @@ async def cmd_language(m: Message, session: AsyncSession):
 
 
 @router.callback_query(F.data.startswith("lang:"))
-async def cb_language(cb: CallbackQuery, session: AsyncSession):
+async def cb_language(cb: CallbackQuery, session: AsyncSession, redis: Redis | None = None):
     await cb.answer()
     u = await get_user(session, cb.from_user)
     parts = (cb.data or "").split(":")
@@ -199,7 +197,7 @@ async def cb_language(cb: CallbackQuery, session: AsyncSession):
     elif len(parts) == 3 and parts[1] == "set" and parts[2] in {"en", "ar"}:
         u.language = parts[2]
         await session.flush()
-        text = tr(u.language, "language_saved") + "\n\n" + welcome_text(u.language)
+        text = tr(u.language, "language_saved") + "\n\n" + await dashboard_welcome(u.language, redis)
         keyboard = nav_keyboard(u.id, show_back=False, lang=u.language)
     else:
         return
@@ -214,7 +212,7 @@ async def cmd_help(m: Message, session: AsyncSession):
 
 
 @router.callback_query(F.data.in_({"nav:home", "nav:back", "nav:help"}))
-async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
+async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession, redis: Redis | None = None):
     # Acknowledge immediately so slow DB/API work cannot leave the Telegram
     # callback spinner running until Telegram expires the callback query.
     try:
@@ -227,7 +225,7 @@ async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     if not cb.message:
         return
 
-    body = tr(u.language, "help_text") if cb.data == "nav:help" else welcome_text(u.language)
+    body = tr(u.language, "help_text") if cb.data == "nav:help" else await dashboard_welcome(u.language, redis)
     keyboard = nav_keyboard(u.id, show_back=False, lang=u.language)
     try:
         await edit_message_if_changed(cb.message, body, reply_markup=keyboard)
@@ -557,6 +555,12 @@ def premium_copy(lang: str = "en", price: int | None = None, days: int | None = 
         + tr(lang, "premium_plan", stars=price, days=days, premium=settings.premium_alert_limit, free=settings.free_alert_limit)
         + "\n\n" + tr(lang, "pay_note")
     )
+
+
+async def dashboard_welcome(language: str, redis: Redis | None = None) -> str:
+    """Render the home screen using the same runtime Premium offer as the invoice."""
+    price, days = await get_offer(redis) if redis is not None else (settings.premium_price_stars, settings.premium_days)
+    return welcome_text(language, stars=price, days=days)
 
 
 def premium_member_status(lang: str, expiry: str) -> str:
