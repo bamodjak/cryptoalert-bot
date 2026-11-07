@@ -192,7 +192,13 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession, 
         LAST_RENDERED_TEXT.pop(str(user.id), None)
         await callback.answer()
         try:
-            await callback.message.edit_text(tr(user.language, "live_closed"))
+            await callback.message.edit_text(
+                tr(user.language, "live_closed"),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=tr(user.language, "home"), callback_data="nav:home"),
+                    InlineKeyboardButton(text=tr(user.language, "live"), callback_data="live:open"),
+                ]]),
+            )
         except TelegramBadRequest:
             pass
     else:
