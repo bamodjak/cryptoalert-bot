@@ -105,13 +105,11 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 welcome_text(u.language) + premium_note,
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
-            await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
             return
     await m.answer(
         welcome_text(u.language),
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
-    await m.answer(tr(u.language, "quick_menu_hint"), reply_markup=persistent_menu_keyboard(u.language))
 
 
 @router.message(F.text.in_({tr(lang, key) for lang in ("en", "ar") for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")}))
