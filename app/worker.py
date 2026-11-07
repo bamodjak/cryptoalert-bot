@@ -64,7 +64,7 @@ def notification_category_filters():
         or_(Alert.kind != "gas", User.notify_gas_alerts.is_(True)),
     )
 
-async def check_once(bot: Bot, prices: PriceService) -> None:
+async def check_once(bot: Bot, prices: PriceService, lease_lost: asyncio.Event | None = None) -> None:
     global last_success
     async with Session() as s:
         now = utcnow()
@@ -118,8 +118,11 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
         except PriceError:
             log.warning("gas unavailable this round")
 
-    fired, blocked_users = [], set()
+    blocked_users = set()
     for a in alerts:
+        if lease_lost is not None and lease_lost.is_set():
+            log.warning("stopping alert sends after worker lease loss")
+            break
         if a.user_id in blocked_users:
             continue
         value = gas if a.kind == "gas" else px.get(a.coin_id)
@@ -130,26 +133,28 @@ async def check_once(bot: Bot, prices: PriceService) -> None:
         text = _alert_message(a.kind, a.symbol, value, a.target, a.id, a.op, languages.get(a.user_id))
         ok = await _send(bot, a.user_id, text)
         if ok:
-            fired.append(a.id)
+            # Persist each delivery immediately. A later batch failure must not
+            # reactivate already-notified alerts and send the same notification again.
+            async with Session() as s:
+                await s.execute(
+                    update(Alert).where(Alert.id == a.id, Alert.active.is_(True))
+                    .values(active=False, triggered_at=utcnow())
+                )
+                await s.commit()
             metrics.ALERTS_FIRED.inc()
         elif ok is False:
             blocked_users.add(a.user_id)
+            async with Session() as s:
+                await s.execute(update(Alert).where(Alert.user_id == a.user_id).values(active=False))
+                await s.execute(update(User).where(User.id == a.user_id).values(blocked=True))
+                await s.commit()
         await asyncio.sleep(0.05)  # stay well under Telegram's ~30 msg/s
 
-    async with Session() as s:
-        if fired:
-            await s.execute(update(Alert).where(Alert.id.in_(fired)).values(active=False, triggered_at=utcnow()))
-        if blocked_users:
-            await s.execute(update(Alert).where(Alert.user_id.in_(blocked_users)).values(active=False))
-            await s.execute(update(User).where(User.id.in_(blocked_users)).values(blocked=True))
-        await s.commit()
     last_success = time.time()
     metrics.LAST_CHECK.set(last_success)
-    if fired:
-        log.info("fired %d alerts", len(fired))
 
 
-async def _renew_worker_lock(lock, stop: asyncio.Event) -> None:
+async def _renew_worker_lock(lock, stop: asyncio.Event, lease_lost: asyncio.Event) -> None:
     """Keep the distributed worker lock alive during long alert batches."""
     while not stop.is_set():
         try:
@@ -160,12 +165,15 @@ async def _renew_worker_lock(lock, stop: asyncio.Event) -> None:
         try:
             if not await lock.extend(90, replace_ttl=True):
                 log.warning("alert worker lock could not be renewed")
+                lease_lost.set()
                 return
         except LockNotOwnedError:
             log.warning("alert worker lock expired before renewal")
+            lease_lost.set()
             return
         except Exception:
             log.exception("alert worker lock renewal failed")
+            lease_lost.set()
             return
 
 
@@ -177,9 +185,10 @@ async def _run_check_with_lock(bot: Bot, prices: PriceService, redis: Redis) -> 
         return False
 
     stop_renewal = asyncio.Event()
-    renewal_task = asyncio.create_task(_renew_worker_lock(lock, stop_renewal))
+    lease_lost = asyncio.Event()
+    renewal_task = asyncio.create_task(_renew_worker_lock(lock, stop_renewal, lease_lost))
     try:
-        await check_once(bot, prices)
+        await check_once(bot, prices, lease_lost=lease_lost)
         return True
     finally:
         stop_renewal.set()
