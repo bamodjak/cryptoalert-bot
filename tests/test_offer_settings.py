@@ -166,3 +166,16 @@ def test_premium_limit_keyboard_has_direct_plan_and_home_actions():
     keyboard = premium_limit_keyboard("en")
     callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
     assert callbacks == ["dash:premium", "nav:home"]
+
+
+def test_dashboard_welcome_uses_the_runtime_offer_for_every_home_entry():
+    import asyncio
+    from app.handlers import dashboard_welcome
+
+    class Redis:
+        async def mget(self, keys):
+            return ["2200", "45"]
+
+    text = asyncio.run(dashboard_welcome("en", Redis()))
+    assert "2200 Telegram Stars for 45 days" in text
+
