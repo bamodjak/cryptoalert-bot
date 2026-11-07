@@ -351,7 +351,9 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
     elif action == "broadcasthelp":
         text = (
-            "<b>📣 Broadcast</b>\n/broadcast your announcement\n"
+            "<b>📣 Broadcast</b>\n"
+            "Reply to any Telegram message (text, photo, video or document) with /broadcast to copy it.\n"
+            "Or send /broadcast your announcement text.\n"
             "Review the preview, then confirm. Broadcasts go to registered, non-suspended users."
         )
         rows = [[InlineKeyboardButton(text="⬅️ Admin Panel", callback_data="admin:panel")]]
