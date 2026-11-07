@@ -179,6 +179,7 @@ def test_read_only_operations_dashboard_is_served_without_embedded_credentials()
     assert "Orbsat · Operations" in response.text
     assert "METRICS_TOKEN" in response.text
     assert "localStorage" not in response.text
+    assert 'id="live"' in response.text
     assert "/stats.json" in response.text
 
 
@@ -225,3 +226,5 @@ def test_operations_stats_endpoint_returns_extended_counts_only_with_valid_token
     assert payload["blocked_users"] == 3
     assert payload["pending_manual_payments"] == 4
     assert payload["stars_earned"] == 999
+    assert payload["live_runtime_active"] is False
+    assert payload["live_stream_connected"] is False
