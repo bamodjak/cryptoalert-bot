@@ -270,6 +270,11 @@ async def cb_create_alert(
         symbol, direction = parts[2], parts[3]
         if direction not in {"up", "down"}:
             await state.clear()
+            await edit_if_changed(
+                cb.message,
+                tr(u.language, "invalid_option"),
+                reply_markup=create_coin_keyboard(u.id, lang=u.language),
+            )
             return
         await state.set_state(AlertCustomInput.waiting)
         await state.update_data(custom_kind=action, symbol=symbol, direction=direction)
@@ -278,8 +283,12 @@ async def cb_create_alert(
             if action == "custompct"
             else tr(u.language, "price_prompt")
         )
-        await edit_if_changed(cb.message,
-            f"<b>{tr(u.language, 'create_title')} · {symbol.upper()}</b>\n{prompt}\n\n{tr(u.language, 'send_value')}"
+        await edit_if_changed(
+            cb.message,
+            f"<b>{tr(u.language, 'create_title')} · {symbol.upper()}</b>\n{prompt}\n\n{tr(u.language, 'send_value')}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=tr(u.language, "cancel"), callback_data="create:cancel"),
+            ]]),
         )
         return
     if action == "cancel":
