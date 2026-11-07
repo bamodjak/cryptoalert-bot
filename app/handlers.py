@@ -49,6 +49,34 @@ admin.message.filter(F.chat.type == "private")
 admin.callback_query.filter(F.from_user.id.in_(settings.admin_id_set), F.message.chat.type == "private")
 
 
+
+@admin.message(Command("admin"))
+async def cmd_admin(m: Message):
+    """Open the private admin panel for configured administrators only."""
+    rows = [
+        [InlineKeyboardButton(text="📊 Statistics", callback_data="admin:stats")],
+        [
+            InlineKeyboardButton(text="👥 Users & Premium", callback_data="admin:users"),
+            InlineKeyboardButton(text="💳 Payments", callback_data="admin:payments"),
+        ],
+        [
+            InlineKeyboardButton(text="🎁 Giveaways", callback_data="admin:giveaways"),
+            InlineKeyboardButton(text="📣 Broadcast", callback_data="admin:broadcasthelp"),
+        ],
+        [InlineKeyboardButton(text="🧭 Full command guide", callback_data="admin:guide")],
+        [
+            InlineKeyboardButton(text="⏸ Pause bot", callback_data="admin:pause"),
+            InlineKeyboardButton(text="▶️ Resume bot", callback_data="admin:resume"),
+        ],
+        [InlineKeyboardButton(text="💸 Refund help", callback_data="admin:refund")],
+        [InlineKeyboardButton(text="🏠 Home", callback_data="nav:home")],
+    ]
+    await m.answer(
+        "<b>🛡 Admin Panel</b>\nChoose an action:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
 @router.message(CommandStart())
 async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
     u = await get_user(session, m.from_user, command.args)
