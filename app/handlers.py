@@ -215,17 +215,33 @@ async def cmd_help(m: Message, session: AsyncSession):
 
 @router.callback_query(F.data.in_({"nav:home", "nav:back", "nav:help"}))
 async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
+    # Acknowledge immediately so slow DB/API work cannot leave the Telegram
+    # callback spinner running until Telegram expires the callback query.
+    try:
+        await cb.answer()
+    except TelegramBadRequest:
+        # The callback may already have expired; still attempt to restore navigation.
+        pass
+
     u = await get_user(session, cb.from_user)
-    if cb.message:
-        body = tr(u.language, "help_text") if cb.data == "nav:help" else welcome_text(u.language)
+    if not cb.message:
+        return
+
+    body = tr(u.language, "help_text") if cb.data == "nav:help" else welcome_text(u.language)
+    keyboard = nav_keyboard(u.id, show_back=False, lang=u.language)
+    try:
+        await edit_message_if_changed(cb.message, body, reply_markup=keyboard)
+    except TelegramBadRequest as exc:
+        error = str(exc).lower()
+        if "message can't be edited" not in error and "message to edit not found" not in error:
+            raise
+        # Some Telegram clients can surface a stale/non-editable sub-menu message.
+        # Send a fresh dashboard rather than leaving the user stranded in that screen.
+        await cb.message.answer(body, reply_markup=keyboard)
         try:
-            await cb.message.edit_text(
-                body, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language)
-            )
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
-    await cb.answer()
+            await cb.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
 
 
 @router.callback_query(F.data == "nav:share")
