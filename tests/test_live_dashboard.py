@@ -167,3 +167,38 @@ def test_main_navigation_exposes_live_market_in_both_languages(monkeypatch):
         buttons = [button for row in markup.inline_keyboard for button in row]
         live = next(button for button in buttons if button.callback_data == "live:open")
         assert live.text == expected
+
+
+
+def test_closing_live_dashboard_leaves_home_and_reopen_actions():
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.live_dashboard import cb_live, DASHBOARDS_KEY
+
+    user = SimpleNamespace(id=42, language="en", is_premium=True, suspended=False)
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=42, type="private"),
+        message_id=77,
+        edit_text=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:close",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(
+        hget=AsyncMock(return_value=json.dumps({"chat_id": 42, "message_id": 77})),
+        hdel=AsyncMock(),
+    )
+    prices = SimpleNamespace(prices=AsyncMock())
+
+    asyncio.run(cb_live(callback, redis, session, prices))
+
+    assert redis.hdel.await_args.args == (DASHBOARDS_KEY, "42")
+    markup = message.edit_text.await_args.kwargs["reply_markup"]
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert callbacks == ["nav:home", "live:open"]
