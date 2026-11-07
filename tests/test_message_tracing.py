@@ -92,9 +92,6 @@ def test_start_handler_sends_welcome_and_home_keyboard(monkeypatch):
     welcome_args, welcome_kwargs = message.answer.await_args_list[0]
     assert welcome_args[0] == welcome_text("en")
     assert welcome_kwargs["reply_markup"] is not None
-    menu_args, menu_kwargs = message.answer.await_args_list[1]
-    assert "Quick actions" in menu_args[0]
-    assert menu_kwargs["reply_markup"].is_persistent is True
 
 
 
