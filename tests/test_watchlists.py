@@ -19,7 +19,7 @@ def test_asset_picker_uses_callback_data_and_back_action():
 def test_watchlist_keyboard_exposes_add_and_dashboard_actions():
     keyboard = watchlist_keyboard([])
     callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
-    assert callbacks == ["wl:add", "nav:home"]
+    assert callbacks == ["wl:add", "wl:addcustom", "nav:home"]
 
 
 
