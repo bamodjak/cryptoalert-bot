@@ -357,7 +357,15 @@ def format_advisory(rows: list[dict], language: str = "en") -> str:
         "volatility_moderate": ("Moderate volatility", "تقلب متوسط"),
         "volatility_calm": ("Calm volatility", "تقلب منخفض"),
     }
-    lines = [title, "4H OHLCV · multi-horizon trend · RSI · ATR · volume · volatility regime", ""]
+    explainer = (
+        "How to read: stance is the current technical setup, score is a rule-based checklist (not odds), "
+        "RSI measures momentum, ATR estimates typical price movement, and invalidation is the level "
+        "that would weaken the setup."
+        if not arabic else
+        "طريقة القراءة: الحالة تصف الوضع الفني الحالي، والدرجة حصيلة قواعد وليست احتمالاً للربح، "
+        "وRSI يقيس الزخم، وATR يقدّر نطاق الحركة المعتاد، ومستوى الإبطال هو السعر الذي يضعف الفرضية."
+    )
+    lines = [title, explainer, "4H OHLCV · multi-horizon trend · RSI · ATR · volume · volatility regime", ""]
     for row in rows:
         stance = row["stance"]
         if arabic:
