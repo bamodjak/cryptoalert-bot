@@ -83,3 +83,29 @@ def test_persistent_markets_action_uses_market_overview(monkeypatch):
         assert message.answer.await_args.args[0] == "snapshot:123:en"
 
     asyncio.run(scenario())
+
+
+
+def test_help_navigation_opens_help_content_instead_of_home(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.handlers as handlers
+    from app.i18n import tr
+
+    async def scenario():
+        user = SimpleNamespace(id=123, language="en")
+        monkeypatch.setattr(handlers, "get_user", AsyncMock(return_value=user))
+        message = SimpleNamespace(edit_text=AsyncMock())
+        callback = SimpleNamespace(
+            data="nav:help",
+            from_user=SimpleNamespace(id=123),
+            message=message,
+            answer=AsyncMock(),
+        )
+        await handlers.cb_home_or_back(callback, None)
+        assert message.edit_text.await_args.args[0] == tr("en", "help_text")
+        callback.answer.assert_awaited_once()
+
+    asyncio.run(scenario())
