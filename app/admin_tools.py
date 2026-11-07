@@ -586,13 +586,17 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
         await redis.delete(lock_key)
         await cb.answer("Another broadcast is already running.", show_alert=True)
         return
-    sent = 0
+    progress_key = f"admin:broadcast:sent:{cb.message.chat.id}:{cb.message.message_id}"
+    sent_this_run = 0
     failed = 0
     try:
         await cb.answer("Broadcast started.")
         ids = list((await session.scalars(select(User.id).where(User.suspended.is_(False)))).all())
         await session.commit()  # release the DB connection before network sends
         for uid in ids:
+            if await redis.sismember(progress_key, str(uid)):
+                continue
+            delivered = False
             try:
                 if payload["kind"] == "copy":
                     await bot.copy_message(
@@ -602,7 +606,7 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
                     )
                 else:
                     await bot.send_message(uid, str(payload["text"]), parse_mode=None)
-                sent += 1
+                delivered = True
             except TelegramRetryAfter as exc:
                 await asyncio.sleep(exc.retry_after)
                 try:
@@ -614,19 +618,42 @@ async def confirm_broadcast(cb: CallbackQuery, session: AsyncSession, bot: Bot, 
                         )
                     else:
                         await bot.send_message(uid, str(payload["text"]), parse_mode=None)
-                    sent += 1
+                    delivered = True
                 except Exception:
                     failed += 1
                     log.exception("broadcast retry failed")
             except Exception:
                 failed += 1
                 log.exception("broadcast delivery failed")
+            if delivered:
+                # Track each recipient immediately so a restarted/ retried broadcast
+                # skips accounts already sent the announcement.
+                await redis.sadd(progress_key, str(uid))
+                await redis.expire(progress_key, 86400)
+                sent_this_run += 1
             await asyncio.sleep(0.04)
-        await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={sent}; failed={failed}")
-        await redis.delete(payload_key)
-        await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {sent}; failed: {failed}.")
+        delivered_total = int(await redis.scard(progress_key))
+        if failed:
+            # Keep the payload and progress set. A second confirmation resumes only
+            # recipients not yet marked delivered.
+            await redis.delete(lock_key)
+            retry_markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Retry failed recipients", callback_data="admin:broadcast:confirm"),
+                InlineKeyboardButton(text="Cancel", callback_data="admin:broadcast:cancel"),
+            ]])
+            await edit_message_if_changed(
+                cb.message,
+                f"Broadcast partially delivered. Delivered: {delivered_total}; failed this run: {failed}. Retry to continue with undelivered recipients.",
+                reply_markup=retry_markup,
+            )
+        else:
+            await audit(session, cb.from_user.id, "broadcast_sent", None, f"sent={delivered_total}; failed=0")
+            await redis.delete(payload_key, progress_key)
+            await edit_message_if_changed(cb.message, f"Broadcast completed. Delivered: {delivered_total}; failed: 0.")
     except Exception:
-        log.exception("broadcast workflow aborted after %s delivered and %s failed", sent, failed)
+        log.exception("broadcast workflow aborted after %s delivered this run and %s failed", sent_this_run, failed)
+        # Preserve the recipient ledger and payload so a later confirmation can resume.
+        await redis.delete(lock_key)
         raise
     finally:
         # Never leave the global mutex held if an unexpected error interrupts delivery.
