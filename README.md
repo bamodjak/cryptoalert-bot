@@ -161,3 +161,5 @@ Operational visibility includes Prometheus counters and gauges for alert deliver
 - Premium-only entry points must lead to a clear explanation and a direct plan-comparison action rather than a dead-end alert. A plan screen must always render successfully with both Free and Premium limits.
 - Do not use fake scarcity, misleading countdowns, hidden fees, forced purchase flows or obstructive cancellation. Improve conversion through clear value, transparent terms, a useful free tier and reliable product delivery.
 - Remaining QA: verify every user-facing button against the deployed Botkeep commit, test Free and Premium accounts separately, verify the live Stars offer against the admin-configured runtime price, and complete a full alert creation/edit/delete and Premium entitlement smoke test without charging a test user.
+
+- Free-plan alert-limit and gas-alert gates now include a direct, optional Premium comparison action; the custom Watchlist gate explains that the 10-item cap still applies.
