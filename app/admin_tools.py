@@ -368,7 +368,7 @@ async def verify_payment_cmd(m: Message, command: CommandObject, session: AsyncS
     try:
         await bot.send_message(user.id, f"Your manual payment was verified. Premium is active until {user.premium_until:%Y-%m-%d} UTC.")
     except Exception:
-        pass
+        log.exception("could not notify user %s after manual payment verification via /verify", user.id)
 
 
 @router.message(Command("rejectpay"))
