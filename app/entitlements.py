@@ -24,8 +24,5 @@ def premium_payment_matches_offer(
     premium_price_stars: int,
 ) -> bool:
     """Accept only the exact Premium invoice offer configured by the bot."""
-    return (
-        invoice_payload == f"premium:{premium_days}"
-        and currency == "XTR"
-        and total_amount == premium_price_stars
-    )
+    expected = {f"premium:{premium_days}", f"premium:{premium_days}:{premium_price_stars}"}
+    return invoice_payload in expected and currency == "XTR" and total_amount == premium_price_stars
