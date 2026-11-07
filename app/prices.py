@@ -37,6 +37,29 @@ def _cached_price(value: object) -> float | None:
     return price if math.isfinite(price) and price > 0 else None
 
 
+def _valid_coin_list(rows: object, *, minimum: int) -> bool:
+    if not isinstance(rows, list) or len(rows) < minimum:
+        return False
+    for row in rows:
+        if not isinstance(row, dict):
+            return False
+        try:
+            price = float(row["price_usd"])
+            change = float(row["change_24h"])
+            symbol = row["symbol"]
+            name = row["name"]
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return False
+        if (
+            not isinstance(symbol, str) or not symbol.strip()
+            or not isinstance(name, str) or not name.strip()
+            or not math.isfinite(price) or price <= 0
+            or not math.isfinite(change)
+        ):
+            return False
+    return True
+
+
 def _valid_global_snapshot(payload: object) -> bool:
     """Reject incomplete or non-finite market snapshots before presenting cached data."""
     if not isinstance(payload, dict):
@@ -349,9 +372,10 @@ class PriceService:
                 payload = json.loads(cached)
                 if (
                     isinstance(payload, dict)
-                    and isinstance(payload.get("gainers"), list) and len(payload["gainers"]) >= 5
-                    and isinstance(payload.get("losers"), list) and len(payload["losers"]) >= 5
+                    and _valid_coin_list(payload.get("gainers"), minimum=5)
+                    and _valid_coin_list(payload.get("losers"), minimum=5)
                     and isinstance(payload.get("fetched_at"), int)
+                    and payload["fetched_at"] > 0
                 ):
                     return payload
                 raise ValueError("invalid cached market movers structure")
@@ -365,9 +389,10 @@ class PriceService:
                 candidate = json.loads(stale)
                 if (
                     isinstance(candidate, dict)
-                    and isinstance(candidate.get("gainers"), list) and len(candidate["gainers"]) >= 5
-                    and isinstance(candidate.get("losers"), list) and len(candidate["losers"]) >= 5
+                    and _valid_coin_list(candidate.get("gainers"), minimum=5)
+                    and _valid_coin_list(candidate.get("losers"), minimum=5)
                     and isinstance(candidate.get("fetched_at"), int)
+                    and candidate["fetched_at"] > 0
                 ):
                     stale_payload = candidate
                 else:
@@ -441,7 +466,13 @@ class PriceService:
         if cached is not None:
             try:
                 payload = json.loads(cached)
-                if isinstance(payload, dict) and len(payload.get("coins", [])) == 33:
+                if (
+                    isinstance(payload, dict)
+                    and _valid_coin_list(payload.get("coins"), minimum=33)
+                    and len(payload["coins"]) == 33
+                    and isinstance(payload.get("fetched_at"), int)
+                    and payload["fetched_at"] > 0
+                ):
                     return payload
             except (TypeError, ValueError):
                 log.warning("discarding malformed cached top-33 prices")
@@ -451,7 +482,13 @@ class PriceService:
         if stale is not None:
             try:
                 candidate = json.loads(stale)
-                if isinstance(candidate, dict) and candidate.get("coins"):
+                if (
+                    isinstance(candidate, dict)
+                    and _valid_coin_list(candidate.get("coins"), minimum=33)
+                    and len(candidate["coins"]) == 33
+                    and isinstance(candidate.get("fetched_at"), int)
+                    and candidate["fetched_at"] > 0
+                ):
                     stale_payload = candidate
             except (TypeError, ValueError):
                 log.warning("discarding malformed stale top-33 prices")
