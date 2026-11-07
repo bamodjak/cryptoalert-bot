@@ -3,6 +3,7 @@ import logging
 import secrets
 import signal
 import time
+from datetime import timedelta
 
 import aiohttp
 from aiogram import Bot, Dispatcher
@@ -105,7 +106,7 @@ $("load").addEventListener("click",async()=>{
   if(!response.ok)throw new Error(response.status===404?"Access denied. Check METRICS_TOKEN.":"Request failed ("+response.status+").");
   const d=await response.json();
   for(const [id,value] of Object.entries({
-   users:d.users,new-users:d.new_users,premium:d.premium_users,alerts:d.active_alerts,
+   users:d.users,"new-users":d.new_users,premium:d.premium_users,alerts:d.active_alerts,
    access:d.suspended_users+" / "+d.blocked_users,stars:d.stars_earned,pending:d.pending_manual_payments,
    referrals:d.affiliation_shared+" / "+d.referrals_joined,killed:d.killed?"ON":"OFF"
   }))$(id).textContent=String(value);
@@ -159,7 +160,7 @@ def build_web_app(redis: Redis) -> web.Application:
             alerts = await s.scalar(select(func.count()).select_from(Alert).where(Alert.active.is_(True))) or 0
             suspended = await s.scalar(select(func.count()).select_from(User).where(User.suspended.is_(True))) or 0
             blocked = await s.scalar(select(func.count()).select_from(User).where(User.blocked.is_(True))) or 0
-            new_users = await s.scalar(select(func.count()).select_from(User).where(User.created_at >= utcnow() - __import__("datetime").timedelta(days=7))) or 0
+            new_users = await s.scalar(select(func.count()).select_from(User).where(User.created_at >= utcnow() - timedelta(days=7))) or 0
             pending_manual = await s.scalar(select(func.count()).select_from(ManualPayment).where(ManualPayment.status == "pending")) or 0
             stars = await s.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.refunded.is_(False))) or 0
             shared = await s.scalar(select(func.coalesce(func.sum(User.affiliation_shares), 0))) or 0
