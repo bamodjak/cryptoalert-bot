@@ -92,3 +92,32 @@ def test_pending_payment_queue_accepts_page_navigation_callbacks():
     assert magic.resolve(SimpleNamespace(data="admin:payments:pending")) is not None
     assert magic.resolve(SimpleNamespace(data="admin:payments:pending:2")) is not None
     assert magic.resolve(SimpleNamespace(data="admin:payments:pending:invalid")) is None
+
+
+
+def test_rejectpay_command_commits_rejection_and_audit():
+    from app.admin_tools import reject_payment_cmd
+
+    async def scenario():
+        payment = SimpleNamespace(
+            id=9, user_id=44, status="pending", verified_by=None, verified_at=None,
+        )
+        session = SimpleNamespace(
+            scalar=AsyncMock(return_value=payment),
+            commit=AsyncMock(),
+        )
+        message = SimpleNamespace(
+            from_user=SimpleNamespace(id=99),
+            answer=AsyncMock(),
+        )
+        command = SimpleNamespace(args="9")
+
+        await reject_payment_cmd(message, command, session)
+
+        assert payment.status == "rejected"
+        assert payment.verified_by == 99
+        assert payment.verified_at is not None
+        session.commit.assert_awaited_once()
+        assert "rejected" in message.answer.await_args.args[0].lower()
+
+    asyncio.run(scenario())
