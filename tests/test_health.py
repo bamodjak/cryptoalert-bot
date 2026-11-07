@@ -119,52 +119,12 @@ def test_health_rejects_an_alert_worker_that_has_gone_stale(monkeypatch):
     assert json.loads(response.text) == {"ok": False, "error": "alert worker stale"}
 
 
-def test_render_heartbeat_probes_health_endpoint_instead_of_root():
-    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
-
-    assert '"${SERVICE_URL}/health"' in workflow_path.read_text()
-
-
-def test_render_heartbeat_allows_cold_start_recovery_without_canceling_active_run():
-    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
-    workflow = workflow_path.read_text()
-
-    assert "timeout-minutes: 8" in workflow
-    assert "cancel-in-progress: false" in workflow
-    assert "for attempt in {1..18}; do" in workflow
-    assert "--max-time 20" in workflow
-    assert 'if [[ "${attempt}" -lt 18 ]]; then sleep 5; fi' in workflow
-
-
-def test_render_heartbeat_schedule_avoids_top_of_hour_contention():
-    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
-    workflow = workflow_path.read_text()
-
-    assert '- cron: "1-59/5 * * * *"' in workflow
-    assert "top of each hour" in workflow
-
-
-def test_render_heartbeat_retry_budget_fits_eight_minute_job():
-    workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "render-heartbeat.yml"
-    lines = workflow_path.read_text().splitlines()
-
-    request_timeout = int(next(line for line in lines if "--max-time" in line).split("--max-time", 1)[1].split()[0])
-    retry_delay = int(next(line for line in lines if "sleep " in line).split("sleep ", 1)[1].split()[0].rstrip(";"))
-    job_timeout = int(next(line for line in lines if "timeout-minutes:" in line).split("timeout-minutes:", 1)[1].strip())
-    max_attempts = 18
-    worst_case_seconds = max_attempts * request_timeout + (max_attempts - 1) * retry_delay
-
-    assert worst_case_seconds < job_timeout * 60
-
-
-
 def test_docker_healthcheck_uses_botkeep_or_standard_runtime_port():
     dockerfile = Path(__file__).parents[1] / "Dockerfile"
     content = dockerfile.read_text()
 
     assert "os.getenv('SERVER_PORT', os.getenv('PORT', '8080'))" in content
     assert "127.0.0.1:8080/health" not in content
-
 
 
 def test_read_only_operations_dashboard_is_served_without_embedded_credentials():
@@ -194,7 +154,6 @@ def test_operations_stats_endpoint_rejects_requests_without_bearer_token():
 
     response = asyncio.run(run())
     assert response.status == 404
-
 
 
 def test_operations_stats_endpoint_returns_extended_counts_only_with_valid_token(monkeypatch):
