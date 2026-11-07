@@ -187,11 +187,15 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession, 
     current_raw = await redis.hget(DASHBOARDS_KEY, str(user.id))
     try:
         current = json.loads(current_raw) if current_raw else {}
-    except (ValueError, TypeError):
-        current = {}
+        if not isinstance(current, dict):
+            current = {}
+        current_chat_id = int(current.get("chat_id", -1))
+        current_message_id = int(current.get("message_id", -1))
+    except (ValueError, TypeError, AttributeError):
+        current_chat_id = current_message_id = -1
     is_current = (
-        int(current.get("chat_id", -1)) == callback.message.chat.id
-        and int(current.get("message_id", -1)) == callback.message.message_id
+        current_chat_id == callback.message.chat.id
+        and current_message_id == callback.message.message_id
     )
     if not is_current:
         await callback.answer("This dashboard is no longer active.", show_alert=True)
