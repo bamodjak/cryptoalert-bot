@@ -430,6 +430,15 @@ async def cmd_cancel_alert(m: Message, state: FSMContext, session: AsyncSession)
 @alert_router.callback_query(F.data.startswith("alertedit:"))
 async def cb_edit_alert(cb: CallbackQuery, session: AsyncSession, state: FSMContext):
     user = await get_user(session, cb.from_user)
+    if cb.data == "alertedit:cancel":
+        await state.clear()
+        if cb.message:
+            await edit_message_if_changed(
+                cb.message, tr(user.language, "cancelled"),
+                reply_markup=nav_keyboard(user.id, lang=user.language),
+            )
+        await cb.answer()
+        return
     try:
         alert_id = int((cb.data or "").split(":", 1)[1])
     except (ValueError, IndexError):
@@ -445,7 +454,12 @@ async def cb_edit_alert(cb: CallbackQuery, session: AsyncSession, state: FSMCont
     await state.set_state(AlertEditInput.waiting)
     await state.update_data(alert_id=alert.id)
     if cb.message:
-        await cb.message.answer(tr(user.language, "alert_edit_prompt", symbol=alert.symbol or "GAS"))
+        await cb.message.answer(
+            tr(user.language, "alert_edit_prompt", symbol=alert.symbol or "GAS"),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=tr(user.language, "cancel"), callback_data="alertedit:cancel"),
+            ]]),
+        )
     await cb.answer()
 
 
