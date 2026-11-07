@@ -465,7 +465,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
 
 
 @admin.message(F.text.regexp(r"^\\d{1,6}$"))
-async def save_offer_edit(message: Message, redis: Redis):
+async def save_offer_edit(message: Message, redis: Redis, session: AsyncSession):
     key = f"admin:offer:input:{message.from_user.id}"
     field = await redis.get(key)
     if field not in {"price", "days"}:
@@ -476,6 +476,11 @@ async def save_offer_edit(message: Message, redis: Redis):
         await message.answer(str(exc))
         return
     await redis.delete(key)
+    session.add(AdminAudit(
+        admin_id=message.from_user.id, action="premium_offer_update",
+        details=f"{field}={int(message.text)}",
+    ))
+    await session.commit()
     await message.answer(
         f"Premium offer updated.\nPrice: <b>{price} Stars</b>\nDuration: <b>{days} days</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
