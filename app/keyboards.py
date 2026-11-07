@@ -42,10 +42,9 @@ def nav_keyboard(user_id: int, show_back: bool = True, lang: str = "en") -> Inli
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def persistent_menu_keyboard(language: str = "en") -> ReplyKeyboardMarkup:
-    """Localized quick actions that remain pinned below the chat input."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
+def persistent_menu_keyboard(language: str = "en", show_back: bool = False) -> ReplyKeyboardMarkup:
+    """Localized quick actions; show a persistent Back key only inside a subflow."""
+    rows = [
             [
                 KeyboardButton(text=tr(language, "quick_dashboard"), style="primary"),
                 KeyboardButton(text=tr(language, "quick_markets"), style="primary"),
@@ -54,7 +53,12 @@ def persistent_menu_keyboard(language: str = "en") -> ReplyKeyboardMarkup:
                 KeyboardButton(text=tr(language, "quick_alerts")),
                 KeyboardButton(text=tr(language, "quick_premium"), style="success"),
             ],
-        ],
+        ]
+    ]
+    if show_back:
+        rows.append([KeyboardButton(text=tr(language, "back"), style="primary")])
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
         resize_keyboard=True,
         is_persistent=True,
         input_field_placeholder="Orbsat · Dashboard, markets and alerts" if language != "ar" else "Orbsat · السوق والتنبيهات",
