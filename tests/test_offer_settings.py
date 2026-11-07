@@ -1,4 +1,5 @@
 import asyncio
+import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -136,3 +137,14 @@ def test_admin_offer_value_is_saved_and_audited():
         assert "2200 Stars" in message.answer.await_args.args[0]
 
     asyncio.run(scenario())
+
+
+def test_admin_offer_input_filter_matches_numeric_messages():
+    from app.handlers import OFFER_VALUE_PATTERN
+
+    # This is the router's actual message filter: it must accept values such as
+    # 150 and 100000, rather than requiring a literal backslash before 'd'.
+    assert re.fullmatch(OFFER_VALUE_PATTERN, "150")
+    assert re.fullmatch(OFFER_VALUE_PATTERN, "100000")
+    assert not re.fullmatch(OFFER_VALUE_PATTERN, "150x")
+    assert not re.fullmatch(OFFER_VALUE_PATTERN, "")
