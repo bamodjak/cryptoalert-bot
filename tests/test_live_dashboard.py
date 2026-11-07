@@ -211,3 +211,39 @@ def test_premium_expiry_keyboard_keeps_home_and_upgrade_paths():
     markup = live_exit_keyboard("en")
     callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
     assert callbacks == ["nav:home", "dash:premium"]
+
+
+
+def test_live_dashboard_rejects_corrupt_cached_message_identity():
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.live_dashboard import cb_live
+
+    user = SimpleNamespace(id=42, language="en", is_premium=True, suspended=False)
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=42, type="private"),
+        message_id=77,
+        edit_text=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:close",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(
+        hget=AsyncMock(return_value=json.dumps({"chat_id": "not-an-id", "message_id": 77})),
+        hdel=AsyncMock(),
+    )
+
+    asyncio.run(cb_live(callback, redis, session, SimpleNamespace()))
+
+    callback.answer.assert_awaited_once_with(
+        "This dashboard is no longer active.", show_alert=True
+    )
+    redis.hdel.assert_not_awaited()
+    message.edit_text.assert_not_awaited()
