@@ -241,6 +241,12 @@ async def cb_create_alert(
     if action == "move" and len(parts) == 4:
         symbol, direction = parts[2], parts[3]
         if direction not in {"up", "down"}:
+            await state.clear()
+            await edit_if_changed(
+                cb.message,
+                tr(u.language, "invalid_option"),
+                reply_markup=create_coin_keyboard(u.id, lang=u.language),
+            )
             return
         sign = "+" if direction == "up" else "−"
         rows = [
