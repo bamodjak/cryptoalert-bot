@@ -33,9 +33,10 @@ def test_target_price_example_uses_dynamic_current_price_in_supported_languages(
 def test_help_guide_is_action_oriented_and_covers_the_main_features():
     english = tr("en", "help_text")
     arabic = tr("ar", "help_text")
-    for label in ("Create Price Alert", "Market Pulse", "Top Movers", "Crypto Prices", "Watchlist", "My Alerts", "Premium", "Settings"):
+    for label in ("Create Price Alert", "Market Pulse", "Top Movers", "Crypto Prices", "Watchlist", "My Alerts", "Premium"):
         assert label in english
     for label in ("إنشاء تنبيه للسعر", "نبض السوق", "الأكثر حركة", "أسعار العملات", "قائمة المتابعة", "تنبيهاتي", "بريميوم", "الإعدادات"):
         assert label in arabic
+    assert "/settings" in english and "/settings" in arabic
     assert "top 33" in english.lower()
     assert "33" in arabic
