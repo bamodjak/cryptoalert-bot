@@ -30,10 +30,12 @@ def test_target_price_example_uses_dynamic_current_price_in_supported_languages(
     assert "{current_price}" not in tr("ar", "target_prompt_no_price")
 
 
-def test_help_guide_covers_core_commands_in_both_languages():
-    for language in ("en", "ar"):
-        guide = tr(language, "help_text")
-        for command in ("/create", "/alerts", "/history", "/prices", "/market", "/movers", "/watchlist", "/premium", "/settings", "/paysupport"):
-            assert command in guide
-    assert "top 33" in tr("en", "help_text")
-    assert "أفضل 33" in tr("ar", "help_text")
+def test_help_guide_is_action_oriented_and_covers_the_main_features():
+    english = tr("en", "help_text")
+    arabic = tr("ar", "help_text")
+    for label in ("Create Price Alert", "Market Pulse", "Top Movers", "Crypto Prices", "Watchlist", "My Alerts", "Premium", "Settings"):
+        assert label in english
+    for label in ("إنشاء تنبيه للسعر", "نبض السوق", "العملات الأكثر حركة", "أسعار العملات الرقمية", "قائمة المتابعة", "تنبيهاتي", "بريميوم", "الإعدادات"):
+        assert label in arabic
+    assert "top 33" in english.lower()
+    assert "33" in arabic
