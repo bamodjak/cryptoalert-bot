@@ -23,6 +23,8 @@ def test_inline_navigation_is_compact_and_keeps_admin_private():
     assert {"create:open", "dash:market", "dash:movers", "live:open", "prices:open", "wl:open", "advisor:open", "dash:premium", "nav:share", "nav:help", "lang:choose", "settings:open"} <= callbacks
     assert "🛡 Admin Panel" not in labels
     assert all("Admin" not in label for label in labels)
+    assert [len(row) for row in public.inline_keyboard] == [1, 2, 2, 2, 2, 2, 2, 1]
+    assert public.inline_keyboard[0][0].callback_data == "create:open"
 
     owner = nav_keyboard(user_id=next(iter(__import__("app.config", fromlist=["settings"]).settings.admin_id_set), -1), show_back=False)
     owner_labels = [button.text for row in owner.inline_keyboard for button in row]
