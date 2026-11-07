@@ -92,6 +92,7 @@ footer{margin-top:28px;color:#8191a9;font-size:12px;line-height:1.6}
 <div class="card"><span>Pending manual payments</span><strong id="pending">—</strong></div>
 <div class="card"><span>Referral shares / joins</span><strong id="referrals">—</strong></div>
 <div class="card"><span>Kill switch</span><strong id="killed">—</strong></div>
+<div class="card"><span>Live runtime / stream</span><strong id="live">—</strong></div>
 </section>
 <footer>Read-only analytics. User grants, payment verification, broadcasts and other account mutations remain in the authenticated Telegram admin panel. Market information is not financial advice.</footer>
 </main>
@@ -108,7 +109,8 @@ $("load").addEventListener("click",async()=>{
   for(const [id,value] of Object.entries({
    users:d.users,"new-users":d.new_users,premium:d.premium_users,alerts:d.active_alerts,
    access:d.suspended_users+" / "+d.blocked_users,stars:d.stars_earned,pending:d.pending_manual_payments,
-   referrals:d.affiliation_shared+" / "+d.referrals_joined,killed:d.killed?"ON":"OFF"
+   referrals:d.affiliation_shared+" / "+d.referrals_joined,killed:d.killed?"ON":"OFF",
+   live:(d.live_runtime_active?"active":"idle")+" / "+(d.live_stream_connected?"connected":"offline")
   }))$(id).textContent=String(value);
   $("status").textContent="Connected · refreshed "+new Date().toLocaleTimeString();
  }catch(error){$("status").textContent="Disconnected";$("error").textContent=error.message;}
@@ -180,6 +182,7 @@ def build_web_app(redis: Redis) -> web.Application:
                 "affiliation_shared": shared,
                 "referrals_joined": referrals,
                 "killed": killed,
+                **metrics.live_status(),
             },
             headers={**CORS_HEADERS, "Cache-Control": "no-store"},
         )
