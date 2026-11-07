@@ -466,21 +466,32 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
     await cb.answer()
 
 
-@admin.message(F.text.regexp(r"^\d{1,6}$"))
+@admin.message(F.text)
 async def save_offer_edit(message: Message, redis: Redis, session: AsyncSession):
+    """Handle the active Premium offer edit session without silently dropping input."""
     key = f"admin:offer:input:{message.from_user.id}"
     field = await redis.get(key)
     if field not in {"price", "days"}:
         return
-    try:
-        price, days = await set_offer_value(redis, field, int(message.text))
-    except ValueError as exc:
-        await message.answer(str(exc))
+
+    raw = (message.text or "").strip()
+    maximum = 100000 if field == "price" else 3650
+    label = "Stars price" if field == "price" else "Premium duration"
+    if not raw.isascii() or not raw.isdecimal():
+        await message.answer(f"Send a whole-number {label} between 1 and {maximum}, or /cancel.")
         return
+
+    value = int(raw)
+    try:
+        price, days = await set_offer_value(redis, field, value)
+    except ValueError as exc:
+        await message.answer(f"{exc} Send another value, or /cancel.")
+        return
+
     await redis.delete(key)
     session.add(AdminAudit(
         admin_id=message.from_user.id, action="premium_offer_update",
-        details=f"{field}={int(message.text)}",
+        details=f"{field}={value}",
     ))
     await session.commit()
     await message.answer(
