@@ -159,36 +159,32 @@ TEXT = {
         "no_alerts": "You have no active alerts yet. Tap below to create your first alert.",
         "active_alerts": "🔔 <b>Your active alerts</b>",
         "entitlement_paused": "Paused until Premium is renewed",
-        "help_text": """<b>Orbsat help · Quick guide</b>
+        "help_text": """<b>Orbsat help · Start in 30 seconds</b>
 
-<b>Alerts</b>
-/create — Build a price alert with buttons. Choose an asset, direction and target.
-/alerts — View, edit, snooze, resume or remove alerts.
-/history — See recently triggered alerts.
-/cancel — Cancel an alert setup in progress.
+<b>1. Create your first alert</b>
+Tap <b>Create Price Alert</b> → choose a coin → choose whether it rises or falls → select a suggested percentage or enter your own target. Orbsat sends a Telegram notification when the condition is detected.
 
-<b>Markets</b>
-/price SYMBOL — Check one asset (example: /price BTC).
-/prices — Browse the top 33 crypto assets or show all prices.
-/market — Global market cap, volume and BTC dominance.
+<b>2. Explore the market</b>
+Open <b>Market Pulse</b> for the global market, <b>Top Movers</b> for the biggest daily changes, or <b>Crypto Prices</b> to browse the top 33 assets. Tap a coin for its details and quick actions.
+
+<b>3. Keep an eye on coins</b>
+Use <b>Watchlist</b> to follow up to 10 supported assets. Open <b>My Alerts</b> to edit, snooze, resume or remove alerts.
+
+<b>4. Choose your level</b>
+The free plan includes up to 30 active alerts. Premium adds up to 500 alerts, quantitative research, Ethereum gas alerts and the live market dashboard. See <b>Premium</b> for the exact offer.
+
+<b>Useful commands</b>
+/price BTC — Check one coin.
+/prices — Browse the top 33 assets.
+/market — Global market overview.
 /movers — Top 24-hour gainers and losers.
-/gas — Current Ethereum network gas.
-/watchlist — Track up to 10 assets.
-/live — Premium live market dashboard.
-/signals — Premium quantitative market research.
-
-<b>Account</b>
-/premium — View Premium features and payment options.
-/settings — Set timezone, notification categories and advanced mode.
+/history — Recently triggered alerts.
+/settings — Timezone and notification preferences.
 /language — Switch between English and Arabic.
-/terms — Service terms.
-/paysupport — Payment and refund support.
+/cancel — Exit an active setup.
+/terms and /paysupport — Service terms and payment help.
 
-/alert SYMBOL OP PRICE — Create a quick text alert (example: /alert btc > 70000).
-/gasalert GWEI — Premium alert when Ethereum gas falls below your target.
-/del ID — Delete an alert by its ID.
-
-Use the buttons on the home screen if you prefer not to type commands. Market data can be delayed; alerts are best-effort. Nothing here is financial advice.""",
+Market data can be delayed and notifications are best-effort. Orbsat is an information tool, not financial advice.""",
         "welcome": "<b>ORBSAT · CRYPTO INTELLIGENCE</b>\nYour crypto market and alerts in one chat.\n\n<b>Start here</b>\n1. Tap <b>Create Price Alert</b>.\n2. Choose a coin and whether it rises or falls.\n3. Set a target — Orbsat will notify you in Telegram when the condition is detected.\n\nFree: {free} active alerts. Premium: {premium} alerts, quantitative research, live market and Ethereum gas alerts ({stars} ⭐ / {days} days).\n\n<i>Market data may be delayed. Notifications are best-effort, not financial advice.</i>",
         "premium_title": "<b>⭐ Choose your plan</b>",
         "free_plan": "<b>FREE · 0 ⭐</b>\n• Up to {free} active alerts\n• Core crypto price alerts\n• Telegram notifications",
@@ -378,36 +374,32 @@ Use the buttons on the home screen if you prefer not to type commands. Market da
         "no_alerts": "ليس لديك تنبيهات نشطة بعد. اضغط أدناه لإنشاء أول تنبيه.",
         "active_alerts": "🔔 <b>تنبيهاتك النشطة</b>",
         "entitlement_paused": "متوقف حتى تجديد بريميوم",
-        "help_text": """<b>دليل أوربسات · المساعدة السريعة</b>
+        "help_text": """<b>مساعدة أوربسات · ابدأ خلال 30 ثانية</b>
 
-<b>التنبيهات</b>
-/create — إنشاء تنبيه سعر عبر الأزرار باختيار العملة والاتجاه والهدف.
-/alerts — عرض التنبيهات وتعديلها أو تأجيلها أو استئنافها أو حذفها.
-/history — عرض التنبيهات التي تم تفعيلها مؤخراً.
-/cancel — إلغاء إعداد تنبيه جارٍ.
+<b>1. أنشئ أول تنبيه</b>
+اضغط <b>إنشاء تنبيه للسعر</b> ← اختر العملة ← اختر الارتفاع أو الانخفاض ← حدد نسبة مقترحة أو أدخل سعرك المستهدف. يرسل أوربسات إشعاراً على تيليجرام عند رصد تحقق الشرط.
 
-<b>السوق</b>
-/price SYMBOL — عرض سعر عملة واحدة، مثال: /price BTC.
-/prices — تصفح أفضل 33 عملة أو عرض الأسعار كلها.
-/market — القيمة السوقية الإجمالية وحجم التداول وهيمنة بيتكوين.
-/movers — العملات الأكثر ارتفاعاً وانخفاضاً خلال 24 ساعة.
-/gas — رسوم شبكة إيثيريوم الحالية.
-/watchlist — متابعة ما يصل إلى 10 أصول.
-/live — لوحة السوق المباشرة لمشتركي بريميوم.
-/signals — أبحاث كمية للسوق لمشتركي بريميوم.
+<b>2. استكشف السوق</b>
+افتح <b>نبض السوق</b> لمتابعة السوق العالمي، أو <b>الأكثر حركة</b> لمعرفة أكبر التغيرات اليومية، أو <b>أسعار العملات</b> لتصفح أفضل 33 عملة. اضغط على أي عملة لعرض تفاصيلها والإجراءات السريعة.
 
-<b>الحساب</b>
-/premium — عرض مزايا بريميوم وخيارات الدفع.
-/settings — ضبط المنطقة الزمنية وفئات التنبيهات والوضع المتقدم.
+<b>3. تابع العملات والتنبيهات</b>
+استخدم <b>قائمة المتابعة</b> لمتابعة ما يصل إلى 10 أصول مدعومة. افتح <b>تنبيهاتي</b> لتعديل التنبيهات أو تأجيلها أو استئنافها أو حذفها.
+
+<b>4. اختر ما يناسبك</b>
+تتضمن الخطة المجانية حتى 30 تنبيهاً نشطاً. تضيف بريميوم حتى 500 تنبيه، والبحث الكمي، وتنبيهات رسوم إيثيريوم ولوحة السوق المباشرة. افتح <b>بريميوم</b> للاطلاع على العرض الكامل.
+
+<b>أوامر مفيدة</b>
+/price BTC — عرض سعر عملة.
+/prices — تصفح أفضل 33 عملة.
+/market — ملخص السوق العالمي.
+/movers — العملات الأكثر ارتفاعاً وانخفاضاً.
+/history — سجل التنبيهات التي تم تفعيلها.
+/settings — المنطقة الزمنية وتفضيلات الإشعارات.
 /language — التبديل بين العربية والإنجليزية.
-/terms — شروط الخدمة.
-/paysupport — المساعدة في الدفع والاسترداد.
+/cancel — الخروج من إعداد جارٍ.
+/terms و /paysupport — شروط الخدمة ومساعدة الدفع.
 
-/alert SYMBOL OP PRICE — إنشاء تنبيه سريع بصيغة نصية.
-/gasalert GWEI — تنبيه بريميوم عند انخفاض رسوم إيثيريوم عن الهدف.
-/del ID — حذف تنبيه باستخدام رقمه.
-
-يمكنك استخدام أزرار الصفحة الرئيسية بدلاً من كتابة الأوامر. قد تتأخر بيانات السوق، والتنبيهات حسب أفضل جهد وليست نصيحة مالية.""",
+قد تتأخر بيانات السوق والإشعارات حسب أفضل جهد. أوربسات أداة معلوماتية وليست نصيحة مالية.""",
         "welcome": "<b>مرحباً بك في ORBSAT · ذكاء سوق العملات الرقمية</b>\nالسوق والتنبيهات في محادثة واحدة.\n\n<b>ابدأ من هنا</b>\n1. اضغط <b>إنشاء تنبيه للسعر</b>.\n2. اختر العملة واتجاه الارتفاع أو الانخفاض.\n3. حدد السعر المستهدف — سيرسل أوربسات إشعاراً على تيليجرام عند رصد الشرط.\n\nالمجانية: {free} تنبيهات نشطة. بريميوم: {premium} تنبيهاً، وبحث كمي، وسوق مباشر وتنبيهات رسوم إيثيريوم ({stars} ⭐ / {days} يوماً).\n\n<i>قد تتأخر بيانات السوق. الإشعارات حسب أفضل جهد وليست نصيحة مالية.</i>",
         "premium_title": "<b>⭐ اختر خطتك</b>",
         "free_plan": "<b>مجانية · 0 ⭐</b>\n• حتى {free} تنبيهات نشطة\n• تنبيهات أسعار العملات الرقمية\n• إشعارات تيليجرام",
