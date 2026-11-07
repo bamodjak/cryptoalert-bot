@@ -122,3 +122,36 @@ def test_rejectpay_command_commits_rejection_and_audit():
         assert "rejected" in message.answer.await_args.args[0].lower()
 
     asyncio.run(scenario())
+
+
+def test_verify_command_logs_notification_failure_after_committing_payment(caplog):
+    from app.admin_tools import verify_payment_cmd
+
+    async def scenario():
+        payment = SimpleNamespace(
+            id=10, user_id=45, status="pending", premium_days=30,
+            method="bank", amount=Decimal("3000"), currency="DZD",
+            verified_by=None, verified_at=None,
+        )
+        user = SimpleNamespace(id=45, premium_until=None)
+        session = SimpleNamespace(
+            scalar=AsyncMock(side_effect=[payment, user]),
+            add=MagicMock(),
+            commit=AsyncMock(),
+        )
+        message = SimpleNamespace(
+            from_user=SimpleNamespace(id=99),
+            answer=AsyncMock(),
+        )
+        bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError("Telegram unavailable")))
+
+        await verify_payment_cmd(message, SimpleNamespace(args="10"), session, bot)
+
+        assert payment.status == "verified"
+        session.commit.assert_awaited_once()
+        bot.send_message.assert_awaited_once()
+        assert "Verified payment #10" in message.answer.await_args.args[0]
+
+    import asyncio
+    asyncio.run(scenario())
+    assert "could not notify user 45 after manual payment verification via /verify" in caplog.text
