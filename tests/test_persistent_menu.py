@@ -77,7 +77,7 @@ def test_persistent_markets_action_uses_market_overview(monkeypatch):
             answer=AsyncMock(),
         )
 
-        await handlers.persistent_menu_action(message, None, prices)
+        await handlers.persistent_menu_action(message, None, prices, None)
 
         prices.market_overview.assert_awaited_once()
         assert message.answer.await_args.args[0] == "snapshot:123:en"
