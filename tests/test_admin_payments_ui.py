@@ -14,7 +14,7 @@ def test_manual_payment_confirmation_route_is_distinct_from_decision_request():
     from types import SimpleNamespace
     magic = request_handler.filters[0].magic
     assert magic.resolve(SimpleNamespace(data="admin:manualpay:verify:7")) is not None
-    assert magic.resolve(SimpleNamespace(data="admin:manualpay:confirm:verify:7")) is False
+    assert magic.resolve(SimpleNamespace(data="admin:manualpay:confirm:verify:7")) is None
 
 
 def test_confirmed_manual_payment_verification_grants_premium_and_audits():
