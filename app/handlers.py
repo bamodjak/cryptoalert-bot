@@ -202,9 +202,10 @@ async def cmd_help(m: Message, session: AsyncSession):
 async def cb_home_or_back(cb: CallbackQuery, session: AsyncSession):
     u = await get_user(session, cb.from_user)
     if cb.message:
+        body = tr(u.language, "help_text") if cb.data == "nav:help" else welcome_text(u.language)
         try:
             await cb.message.edit_text(
-                welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language)
+                body, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language)
             )
         except TelegramBadRequest as exc:
             if "message is not modified" not in str(exc).lower():
