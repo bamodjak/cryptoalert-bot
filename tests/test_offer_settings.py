@@ -158,3 +158,11 @@ def test_premium_copy_renders_free_and_paid_allowances_without_missing_placehold
     assert f"{settings.premium_alert_limit}" in text
     assert "Telegram Stars" in text
     assert "no automatic renewal" in text.lower()
+
+
+def test_premium_limit_keyboard_has_direct_plan_and_home_actions():
+    from app.alert_handlers import premium_limit_keyboard
+
+    keyboard = premium_limit_keyboard("en")
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+    assert callbacks == ["dash:premium", "nav:home"]
