@@ -127,7 +127,7 @@ async def cmd_live(message: Message, session: AsyncSession, redis: Redis, prices
 
 
 @router.callback_query(F.data.startswith("live:"))
-async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
+async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession, prices: PriceService):
     if not callback.message:
         await callback.answer()
         return
@@ -135,6 +135,37 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
     if user is None:
         await callback.answer()
         return
+
+    action = (callback.data or "").split(":", 1)[-1]
+    if action == "open":
+        if callback.message.chat.type != "private":
+            await callback.answer(tr(user.language, "live_private_only"), show_alert=True)
+            return
+        if not user.is_premium or user.suspended:
+            await callback.answer(tr(user.language, "live_premium_only"), show_alert=True)
+            return
+        # Replace the user's registered dashboard with the new message. Older
+        # dashboard buttons are rejected by the message-id check below.
+        try:
+            initial = await prices.prices([coin_id for coin_id, *_ in COINS], allow_stale=True)
+        except PriceError:
+            initial = {}
+        now = time.time()
+        seeded = {coin_id: (float(value), now - PRICE_TTL_SECONDS - 1) for coin_id, value in initial.items()}
+        body = format_dashboard(seeded, user.language)
+        sent = await callback.message.answer(body, reply_markup=dashboard_keyboard(user.language))
+        record = {
+            "user_id": user.id,
+            "chat_id": sent.chat.id,
+            "message_id": sent.message_id,
+            "language": user.language,
+            "last_text": body,
+        }
+        LAST_RENDERED_TEXT[str(user.id)] = body
+        await redis.hset(DASHBOARDS_KEY, str(user.id), json.dumps(record))
+        await callback.answer(tr(user.language, "live_started_hint"))
+        return
+
     current_raw = await redis.hget(DASHBOARDS_KEY, str(user.id))
     try:
         current = json.loads(current_raw) if current_raw else {}
@@ -150,13 +181,12 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
     if not user.is_premium or user.suspended:
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
         LAST_RENDERED_TEXT.pop(str(user.id), None)
-        await callback.answer("Premium access is required.", show_alert=True)
+        await callback.answer(tr(user.language, "live_premium_only"), show_alert=True)
         try:
             await callback.message.edit_text(tr(user.language, "live_premium_only"))
         except TelegramBadRequest:
             pass
         return
-    action = (callback.data or "").split(":", 1)[-1]
     if action == "close":
         await redis.hdel(DASHBOARDS_KEY, str(user.id))
         LAST_RENDERED_TEXT.pop(str(user.id), None)
@@ -166,7 +196,6 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession):
         except TelegramBadRequest:
             pass
     else:
-        # Kept for old keyboards created before the refresh button was removed.
         await callback.answer("Dashboard updates automatically.")
 
 
