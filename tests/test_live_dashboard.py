@@ -202,3 +202,12 @@ def test_closing_live_dashboard_leaves_home_and_reopen_actions():
     markup = message.edit_text.await_args.kwargs["reply_markup"]
     callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
     assert callbacks == ["nav:home", "live:open"]
+
+
+
+def test_premium_expiry_keyboard_keeps_home_and_upgrade_paths():
+    from app.live_dashboard import live_exit_keyboard
+
+    markup = live_exit_keyboard("en")
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert callbacks == ["nav:home", "dash:premium"]
