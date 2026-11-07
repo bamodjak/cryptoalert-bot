@@ -464,28 +464,6 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
     await cb.answer()
 
 
-@admin.callback_query(F.data.regexp(r"^admin:offer:set:(price|days)$"))
-async def begin_offer_edit(cb: CallbackQuery, redis: Redis):
-    field = (cb.data or "").rsplit(":", 1)[-1]
-    await redis.set(f"admin:offer:input:{cb.from_user.id}", field, ex=600)
-    prompt = "Send the new price in Telegram Stars (1–100000)." if field == "price" else "Send the Premium duration in days (1–3650)."
-    if cb.message:
-        await cb.message.answer(prompt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Cancel", callback_data="admin:offer:cancel")
-        ]]))
-    await cb.answer()
-
-
-@admin.callback_query(F.data == "admin:offer:cancel")
-async def cancel_offer_edit(cb: CallbackQuery, redis: Redis):
-    await redis.delete(f"admin:offer:input:{cb.from_user.id}")
-    if cb.message:
-        await cb.message.answer("Premium offer edit cancelled.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
-        ]]))
-    await cb.answer()
-
-
 @admin.message(F.text.regexp(r"^\\d{1,6}$"))
 async def save_offer_edit(message: Message, redis: Redis):
     key = f"admin:offer:input:{message.from_user.id}"
