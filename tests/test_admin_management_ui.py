@@ -52,3 +52,57 @@ def test_access_changes_require_a_separate_confirmation_callback():
     callbacks = [handler.callback.__name__ for handler in router.callback_query.handlers]
     assert "request_access_change" in callbacks
     assert "confirm_access_change" in callbacks
+
+
+
+def test_suspend_request_requires_confirmation_and_preserves_account():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.admin_management import request_access_change
+
+    user = SimpleNamespace(id=101, suspended=False)
+    confirmation_message = SimpleNamespace(answer=AsyncMock())
+    callback = SimpleNamespace(
+        data="um:access:101:suspend",
+        from_user=SimpleNamespace(id=1),
+        message=confirmation_message,
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+
+    asyncio.run(request_access_change(callback, session))
+
+    confirmation_message.answer.assert_awaited_once()
+    markup = confirmation_message.answer.await_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert any(button.callback_data == "um:accessconfirm:101:suspend" for button in buttons)
+    assert user.suspended is False
+
+
+def test_suspend_confirmation_updates_access_and_audits_action():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    from app.admin_management import confirm_access_change
+
+    user = SimpleNamespace(id=101, suspended=False)
+    message = SimpleNamespace(edit_text=AsyncMock())
+    callback = SimpleNamespace(
+        data="um:accessconfirm:101:suspend",
+        from_user=SimpleNamespace(id=1),
+        message=message,
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(
+        scalar=AsyncMock(return_value=user),
+        add=Mock(),
+        commit=AsyncMock(),
+    )
+
+    asyncio.run(confirm_access_change(callback, session))
+
+    assert user.suspended is True
+    session.add.assert_called_once()
+    session.commit.assert_awaited_once()
+    assert "suspended" in message.edit_text.await_args.args[0].lower()
