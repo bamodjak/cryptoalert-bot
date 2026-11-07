@@ -299,7 +299,7 @@ async def cb_admin_panel(cb: CallbackQuery, session: AsyncSession, redis: Redis)
     action = (cb.data or "").split(":", 1)[1]
     if action == "offer":
         price, days = await get_offer(redis)
-        text = f"<b>⚙️ Premium offer settings</b>\\nCurrent price: <b>{price} Stars</b>\\nPremium duration: <b>{days} days</b>\\n\\nChoose a value to edit. Changes affect new invoices; existing invoices retain their quoted amount and duration."
+        text = f"<b>⚙️ Premium offer settings</b>\nCurrent price: <b>{price} Stars</b>\nPremium duration: <b>{days} days</b>\n\nChoose a value to edit. Changes affect new invoices; existing invoices retain their quoted amount and duration."
         rows = [
             [InlineKeyboardButton(text="💫 Change Stars price", callback_data="admin:offer:set:price")],
             [InlineKeyboardButton(text="📅 Change Premium days", callback_data="admin:offer:set:days")],
@@ -471,7 +471,7 @@ async def save_offer_edit(message: Message, redis: Redis):
         return
     await redis.delete(key)
     await message.answer(
-        f"Premium offer updated.\\nPrice: <b>{price} Stars</b>\\nDuration: <b>{days} days</b>",
+        f"Premium offer updated.\nPrice: <b>{price} Stars</b>\nDuration: <b>{days} days</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="⬅️ Premium offer settings", callback_data="admin:offer")
         ]]),
@@ -529,11 +529,11 @@ async def cb_premium_buy(cb: CallbackQuery, session: AsyncSession, bot: Bot, red
 
 
 @router.pre_checkout_query()
-async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
+async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession, redis: Redis):
     u = await get_user(session, q.from_user)
+    price, days = await get_offer(redis)
     valid_invoice = premium_payment_matches_offer(
-        q.invoice_payload, q.currency, q.total_amount,
-        settings.premium_days, settings.premium_price_stars,
+        q.invoice_payload, q.currency, q.total_amount, days, price,
     )
     if valid_invoice:
         await q.answer(ok=True)
@@ -542,14 +542,14 @@ async def pre_checkout(q: PreCheckoutQuery, session: AsyncSession):
 
 
 @router.message(F.successful_payment)
-async def paid(m: Message, session: AsyncSession):
+async def paid(m: Message, session: AsyncSession, redis: Redis):
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     sp = m.successful_payment
     u = await get_user(session, m.from_user)
+    current_price, current_days = await get_offer(redis)
     if not premium_payment_matches_offer(
-        sp.invoice_payload, sp.currency, sp.total_amount,
-        settings.premium_days, settings.premium_price_stars,
+        sp.invoice_payload, sp.currency, sp.total_amount, current_days, current_price,
     ):
         inserted = await session.scalar(
             pg_insert(Payment)
@@ -574,7 +574,10 @@ async def paid(m: Message, session: AsyncSession):
     )
     if u is None:
         raise RuntimeError("Payment user disappeared before entitlement update")
-    days = settings.premium_days
+    try:
+        days = int(sp.invoice_payload.split(":")[1]) if len(sp.invoice_payload.split(":")) == 3 else current_days
+    except (ValueError, IndexError):
+        days = current_days
     base = u.premium_until if u.premium_until and u.premium_until > utcnow() else utcnow()
     expiry = base + timedelta(days=days)
     inserted = await session.scalar(
