@@ -97,3 +97,62 @@ def test_live_runtime_elects_one_owner_for_stream_and_dashboard(monkeypatch):
         assert redis.lock_instance.released is True
         assert live_dashboard.metrics.LIVE_RUNTIME_ACTIVE._value.get() == 0
     asyncio.run(run())
+
+
+
+def test_live_dashboard_can_be_opened_from_navigation():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.live_dashboard import cb_live, DASHBOARDS_KEY
+
+    user = SimpleNamespace(id=42, language="en", is_premium=True, suspended=False)
+    sent = SimpleNamespace(chat=SimpleNamespace(id=42), message_id=77)
+    message = SimpleNamespace(
+        chat=SimpleNamespace(type="private"),
+        answer=AsyncMock(return_value=sent),
+    )
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:open",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(hset=AsyncMock())
+    prices = SimpleNamespace(prices=AsyncMock(return_value={"bitcoin": 65000.0}))
+
+    asyncio.run(cb_live(callback, redis, session, prices))
+
+    message.answer.assert_awaited_once()
+    callback.answer.assert_awaited_once()
+    redis.hset.assert_awaited_once()
+    assert redis.hset.await_args.args[0] == DASHBOARDS_KEY
+    assert redis.hset.await_args.args[1] == "42"
+    assert '"message_id": 77' in redis.hset.await_args.args[2]
+
+
+def test_live_dashboard_navigation_rejects_free_users():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.live_dashboard import cb_live
+
+    user = SimpleNamespace(id=42, language="en", is_premium=False, suspended=False)
+    message = SimpleNamespace(chat=SimpleNamespace(type="private"), answer=AsyncMock())
+    callback = SimpleNamespace(
+        message=message,
+        from_user=SimpleNamespace(id=42),
+        data="live:open",
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=user))
+    redis = SimpleNamespace(hset=AsyncMock())
+    prices = SimpleNamespace(prices=AsyncMock())
+
+    asyncio.run(cb_live(callback, redis, session, prices))
+
+    callback.answer.assert_awaited_once()
+    assert callback.answer.await_args.kwargs["show_alert"] is True
+    message.answer.assert_not_awaited()
+    prices.prices.assert_not_awaited()
