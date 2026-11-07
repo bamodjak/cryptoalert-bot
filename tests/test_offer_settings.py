@@ -55,3 +55,47 @@ def test_premium_membership_copy_explains_paid_benefits():
 def test_premium_offer_copy_accepts_runtime_values():
     text = premium_copy("en", 1800, 45)
     assert "1800" in text and "45" in text
+
+
+def test_admin_panel_exposes_premium_offer_controls(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    import app.handlers as handlers
+
+    async def scenario():
+        monkeypatch.setattr(handlers, "get_offer", AsyncMock(return_value=(1800, 45)))
+        redis = SimpleNamespace(set=AsyncMock())
+        message = SimpleNamespace(edit_text=AsyncMock())
+        callback = SimpleNamespace(
+            data="admin:offer", from_user=SimpleNamespace(id=1),
+            message=message, answer=AsyncMock(),
+        )
+        await handlers.cb_admin_panel(callback, None, redis)
+        text = message.edit_text.await_args.args[0]
+        markup = message.edit_text.await_args.kwargs["reply_markup"]
+        assert "1800 Stars" in text and "45 days" in text
+        actions = [button.callback_data for row in markup.inline_keyboard for button in row]
+        assert "admin:offer:set:price" in actions
+        assert "admin:offer:set:days" in actions
+
+    asyncio.run(scenario())
+
+
+def test_admin_offer_price_action_starts_a_scoped_edit_prompt():
+    from types import SimpleNamespace
+    import asyncio
+    from unittest.mock import AsyncMock
+    import app.handlers as handlers
+
+    async def scenario():
+        redis = SimpleNamespace(set=AsyncMock())
+        message = SimpleNamespace(answer=AsyncMock())
+        callback = SimpleNamespace(
+            data="admin:offer:set:price", from_user=SimpleNamespace(id=77),
+            message=message, answer=AsyncMock(),
+        )
+        await handlers.cb_admin_panel(callback, None, redis)
+        redis.set.assert_awaited_once_with("admin:offer:input:77", "price", ex=600)
+        assert "Stars" in message.answer.await_args.args[0]
+
+    asyncio.run(scenario())
