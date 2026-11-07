@@ -152,3 +152,12 @@ Operational visibility includes Prometheus counters and gauges for alert deliver
 - If Telegram reports that a registered Live Market dashboard message no longer exists or cannot be edited, the runtime removes that stale registration. The user can reopen /live to create a new dashboard.
 - Home/Back navigation acknowledges Telegram callbacks before database work and falls back to a fresh dashboard message when a stale sub-menu message cannot be edited, preventing users from getting stranded in Watchlist or another sub-screen.
 - These safeguards are covered by tests/test_input_recovery.py and tests/test_reliability_audit.py. CI and Botkeep runtime smoke tests remain required before merge/deployment.
+
+
+## Product experience and Premium conversion (PR #56 follow-up)
+
+- Onboarding explains the first useful action with a concrete alert example, separates Free from Premium value, states the configured Telegram Stars price and duration, and clarifies that Premium is a one-time purchase with no automatic renewal.
+- Premium value is described by user outcome: explainable quantitative research, the auto-updating in-chat dashboard, Ethereum gas alerts, custom Watchlist assets and the higher alert allowance. Custom assets consume one of the existing 10 Watchlist slots; they do not increase the cap.
+- Premium-only entry points must lead to a clear explanation and a direct plan-comparison action rather than a dead-end alert. A plan screen must always render successfully with both Free and Premium limits.
+- Do not use fake scarcity, misleading countdowns, hidden fees, forced purchase flows or obstructive cancellation. Improve conversion through clear value, transparent terms, a useful free tier and reliable product delivery.
+- Remaining QA: verify every user-facing button against the deployed Botkeep commit, test Free and Premium accounts separately, verify the live Stars offer against the admin-configured runtime price, and complete a full alert creation/edit/delete and Premium entitlement smoke test without charging a test user.
