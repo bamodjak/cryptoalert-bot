@@ -80,3 +80,15 @@ def test_confirmed_manual_payment_rejection_does_not_grant_premium():
         bot.send_message.assert_not_awaited()
 
     asyncio.run(scenario())
+
+
+
+def test_pending_payment_queue_accepts_page_navigation_callbacks():
+    pending_handler = next(
+        h for h in router.callback_query.handlers
+        if h.callback.__name__ == "pending_payments_panel"
+    )
+    magic = pending_handler.filters[0].magic
+    assert magic.resolve(SimpleNamespace(data="admin:payments:pending")) is not None
+    assert magic.resolve(SimpleNamespace(data="admin:payments:pending:2")) is not None
+    assert magic.resolve(SimpleNamespace(data="admin:payments:pending:invalid")) is None
