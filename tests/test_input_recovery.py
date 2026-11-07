@@ -42,3 +42,10 @@ def test_admin_offer_edit_invalid_input_has_recovery_and_cancel():
         assert "cancelled" in message.answer.await_args.args[0].lower()
 
     asyncio.run(scenario())
+
+
+def test_interactive_fsm_state_has_a_bounded_lifetime():
+    from datetime import timedelta
+    from app.main import FSM_STATE_TTL
+
+    assert FSM_STATE_TTL == timedelta(minutes=30)
