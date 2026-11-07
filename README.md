@@ -50,35 +50,58 @@ The CI workflow checks Python compilation and imports, generates offline migrati
 1. In Telegram, open @BotFather → `/newbot` → copy the token.
 2. Get your own user id from @userinfobot (this is `ADMIN_IDS`).
 
-## 2. Production deployment (Render)
+## 2. Production deployment (Botkeep)
 
-The production deployment uses Render. Keep the Telegram bot, PostgreSQL and Redis connected through their private/internal service URLs.
+The supported Botkeep deployment uses its **Python application runtime** plus managed PostgreSQL and Redis services. The repository's Dockerfile is for Docker-based hosts; Botkeep's GitHub application workflow uses a Python runtime and an explicit start command.
 
-1. In Render, create a **Web Service** from this GitHub repository and select the `main` branch.
-2. Choose **Docker** as the runtime. The repository Dockerfile runs database migrations and starts the bot.
-3. Set the health-check path to `/health`. Render supplies the `PORT` environment variable; the application listens on it.
-4. Create or attach a PostgreSQL database and a Redis instance in the same Render region. Use their **internal** connection URLs.
-5. Configure the environment variables below. Keep credentials in Render's Environment settings, never in Git.
+### Create the application
 
-Required environment:
+1. In Botkeep, open **GitHub**, connect the repository if it is not already available, and select `bamodjak/cryptoalert-bot`.
+2. Select the `main` branch and the repository root as the project directory.
+3. Choose the Python runtime version compatible with the project (Python 3.12).
+4. Confirm that Botkeep detects `requirements.txt`. Set the start command to:
+   ```bash
+   python -m app.main
+   ```
+5. Configure the application to listen on `0.0.0.0`. Botkeep provides the HTTP port as `SERVER_PORT`; the application accepts that variable and retains `PORT` as a compatible alternative.
+6. Add the environment variables listed below in Botkeep's **Environment** settings. Do not commit a live `.env` file or credentials.
+
+### Provision the data services
+
+Create PostgreSQL and Redis from Botkeep's database/service profiles. They are separate workloads and consume resources from the account's shared allocation.
+
+- Use the connection details shown in each service's **Database** panel, including the correct host, port, database name and credentials.
+- Set `DATABASE_URL` to the PostgreSQL connection URL and `REDIS_URL` to the Redis connection URL. Use the TLS settings supplied by Botkeep when required.
+- The application converts standard `postgres://` and `postgresql://` URLs to the async SQLAlchemy driver format.
+- Keep independent backups of PostgreSQL data. Stop a database before creating or restoring a panel backup, and retain a copy outside Botkeep.
+
+### Application environment
+
+Required:
 - `BOT_TOKEN` — token from @BotFather.
 - `BOT_USERNAME` — Telegram username without the @.
-- `ADMIN_IDS` — comma-separated numeric Telegram user IDs.
-- `OWNER_ID` — owner's numeric Telegram user ID.
-- `DATABASE_URL` — Render PostgreSQL internal URL. The app normalizes standard PostgreSQL URLs for async SQLAlchemy.
-- `REDIS_URL` — Render Redis internal URL.
-- `POSTGRES_PASSWORD` is only needed for the Docker Compose self-hosted database; it is not used by the managed Render database.
+- `DATABASE_URL` — connection URL for the Botkeep PostgreSQL service.
+- `REDIS_URL` — connection URL for the Botkeep Redis service.
 
-Optional settings include `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`. Set a strong `METRICS_TOKEN` to enable `/dashboard`, `/stats.json` and `/metrics`; the dashboard asks for the token per session and does not persist it. Leave `WEBHOOK_BASE_URL` empty for the default polling mode. Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
+Optional:
+- `SUPPORT_CONTACT`, `COINGECKO_API_KEY`, `ETH_RPC_URL`, `CHECK_INTERVAL`, Premium pricing/limits and `METRICS_TOKEN`.
+- Set a strong `METRICS_TOKEN` to enable protected statistics at `/dashboard`, `/stats.json` and `/metrics`. The dashboard asks for the token per session and does not persist it.
+- Leave `WEBHOOK_BASE_URL` empty to use Telegram long polling; this requires no public domain. For webhook mode, configure a public HTTPS domain, `WEBHOOK_BASE_URL`, `WEBHOOK_SECRET` and the matching `DOMAIN`.
+- Do not enable `UPDATE_BOT_PROFILE_ON_STARTUP` unless intentionally changing Telegram profile metadata.
 
-After deployment, verify:
-- `/` returns the service landing response.
+### Deploy and verify
+
+Deploy the selected `main` revision from Botkeep's GitHub panel. Follow the deployment progress and inspect the application's **Console** and runtime state; an accepted deployment is not proof that the process is healthy.
+
+Verify:
+- The application process starts with `python -m app.main` and remains running.
+- `/` returns the service landing response when HTTP routing is configured.
+- `/health` returns HTTP 200 after Telegram polling or webhook transport, the alert worker, PostgreSQL and Redis are ready.
 - `/dashboard` serves the read-only operations overview; enter the configured `METRICS_TOKEN` to load protected statistics.
-- `/health` returns HTTP 200 and reports Telegram transport and worker readiness.
 - The bot responds to `/start` in Telegram.
-- Render logs show successful database migrations, router registration and Telegram polling.
+- Console output shows successful database migrations, router registration and Telegram transport startup.
 
-Deploys from `main` are automatic. Database migrations run at container startup; take a database backup before deploying schema changes.
+Alembic migrations run automatically when the application starts. Back up PostgreSQL before deploying schema changes. Botkeep's resource limits are shared across the application and database workloads; check allocation and runtime usage if startup, migrations or database operations fail.
 
 ## 3. Self-host with Docker Compose (optional)
 
