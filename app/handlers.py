@@ -80,7 +80,7 @@ async def cmd_admin(m: Message):
 
 
 @router.message(CommandStart())
-async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
+async def cmd_start(m: Message, command: CommandObject, session: AsyncSession, redis: Redis):
     u = await get_user(session, m.from_user, command.args)
     start_args = command.args or ""
     if start_args.startswith("invite_"):
@@ -108,8 +108,11 @@ async def cmd_start(m: Message, command: CommandObject, session: AsyncSession):
                 reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
             )
             return
+    welcome = welcome_text(u.language)
+    if u.is_premium and u.premium_until:
+        welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
     await m.answer(
-        welcome_text(u.language),
+        welcome,
         reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language),
     )
 
@@ -125,7 +128,10 @@ async def persistent_menu_action(m: Message, session: AsyncSession, prices: Pric
         for key in ("quick_dashboard", "quick_markets", "quick_alerts", "quick_premium")
     }.get(action_label)
     if action == "quick_dashboard":
-        await m.answer(welcome_text(u.language), reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
+        welcome = welcome_text(u.language)
+        if u.is_premium and u.premium_until:
+            welcome += premium_member_status(u.language, u.premium_until.strftime("%Y-%m-%d"))
+        await m.answer(welcome, reply_markup=nav_keyboard(u.id, show_back=False, lang=u.language))
     elif action == "quick_markets":
         try:
             text = market_snapshot_text(await prices.market_overview(), u.language)
