@@ -106,3 +106,23 @@ def test_gas_gwei_discards_invalid_cached_value_and_validates_rpc_quote(monkeypa
         assert redis.saved == 1.0
 
     asyncio.run(scenario())
+
+
+
+def test_cached_market_rows_reject_non_finite_and_incomplete_quotes():
+    from app.prices import _valid_coin_list
+
+    valid = [{"price_usd": 1.25, "change_24h": -2.0, "symbol": "ABC", "name": "Example"}]
+    assert _valid_coin_list(valid, minimum=1)
+    assert not _valid_coin_list(
+        [{"price_usd": float("nan"), "change_24h": 1, "symbol": "ABC", "name": "Example"}],
+        minimum=1,
+    )
+    assert not _valid_coin_list(
+        [{"price_usd": 1, "change_24h": float("inf"), "symbol": "ABC", "name": "Example"}],
+        minimum=1,
+    )
+    assert not _valid_coin_list(
+        [{"price_usd": 1, "change_24h": 1, "symbol": "", "name": "Example"}],
+        minimum=1,
+    )
