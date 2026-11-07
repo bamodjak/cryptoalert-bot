@@ -127,3 +127,15 @@ The live trade stream and dashboard updater run under one Redis-elected runtime 
 Users can independently enable or disable price-alert and gas-alert categories in `/settings`; disabled categories retain their configured alerts. Premium research screens show the rule drivers behind each signal and an in-sample historical directional evaluation with sample counts and explicit fee/slippage limitations.
 
 Operational visibility includes Prometheus counters and gauges for alert delivery, live runtime ownership, Binance stream connectivity/reconnects, trade ingestion and Telegram dashboard edits. `/health` reports service readiness plus live-runtime and stream state.
+
+
+## Reliability audit notes (PR #56)
+
+- Premium offer editing accepts ordinary numeric replies, explains invalid input and supports /cancel; custom Watchlist CoinGecko-ID entry also supports /cancel.
+- Telegram FSM state and data expire after 30 minutes of inactivity so abandoned alert/watchlist prompts do not capture unrelated messages indefinitely.
+- Admin Premium grants and suspend/restore operations lock the target account and commit before success replies. Manual payment references are protected against concurrent duplicate submissions; a unique-reference conflict is rolled back and reported cleanly.
+- Refund reconciliation locks the affected user before adjusting Premium expiry.
+- The alert worker commits each successful alert delivery before moving to the next notification and stops starting new sends after losing its Redis lease. Telegram does not expose a sendMessage idempotency key, so a crash after Telegram accepts a message but before the database commit can still cause a single duplicate on retry.
+- Broadcasts keep a Redis per-recipient delivery ledger and can resume after interruption without deliberately resending recipients already recorded as delivered. Cancellation clears the payload and ledger. The narrow send-accepted/process-crash-before-ledger-write interval can still cause one duplicate for the affected recipient.
+- If Telegram reports that a registered Live Market dashboard message no longer exists or cannot be edited, the runtime removes that stale registration. The user can reopen /live to create a new dashboard.
+- These safeguards are covered by tests/test_input_recovery.py and tests/test_reliability_audit.py. CI and Botkeep runtime smoke tests remain required before merge/deployment.
