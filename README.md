@@ -5,6 +5,7 @@
 **User experience**
 - Guided alert setup for 15 assets: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, TON, TRX, AVAX, DOT, LINK, LTC, USDT and USDC
 - Top-33 crypto price browser with individual coin selection or all-coin view, Ethereum gas, global market pulse, personal watchlist (up to 10 assets), alert list and inline alert deletion
+- Main navigation includes a one-tap Premium live-market entry; free users receive the Premium gate, while eligible users open an auto-updating dashboard in the chat
 - Premium `/live` dashboard in Telegram chat with public trade-stream prices and automatic message updates (no Mini App)
 - Clear onboarding, a persistent color-coded Telegram quick-action keyboard (markets/movers, crypto prices/alerts, Premium/help), compact Telegram command menu, and branded bot profile metadata (explicit opt-in) and command menu updated on startup
 - Free plan with up to 30 active alerts; optional Premium via Telegram Stars (default 1,500 ⭐ / 30 days) for up to 500 alerts, Ethereum gas alerts, and the in-chat live dashboard
@@ -20,12 +21,13 @@
 **Operations and safety**
 - PostgreSQL 16 (SQLAlchemy async + Alembic), Redis, Docker, health endpoint and Prometheus metrics
 - Admin-only user management, Premium grants, reversible suspension, payment review, giveaways, broadcast confirmation and kill switch
+- Admin overview reports registrations (including 7-day growth), Premium accounts, active alerts, suspended/blocked accounts, unrefunded Stars and pending manual payments
 - Anti-spam throttling and idempotent Telegram Stars payment handling
 - Market data can be delayed; the bot is informational and does not provide financial advice
 
 ### Telegram navigation notes
 
-The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); the inline dashboard also includes a personal Watchlist; users do not need to type slash commands. Each label is routed to a real handler, while existing slash commands remain available for compatibility. The compact inline dashboard provides the full feature menu, with administrative controls shown only to configured admins. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
+The persistent reply keyboard presents four plain-language actions (Dashboard, Markets, Alerts, Premium); the inline dashboard includes Market Pulse, Top Movers, Live Market, Crypto Prices, Gas, Watchlist, Premium Signals, Alerts, Premium, Referrals, Help, Language and Settings. The Live Market entry is available in navigation but requires Premium to open. Each action is routed to a real handler, while slash commands remain available for compatibility. Administrative controls are shown only to configured admins. Telegram clients control the exact rendering; unsupported clients may display buttons without color styling. The keyboard requires aiogram 3.25 or newer for Bot API 9.4 `KeyboardButton.style` support.
 
 ## Admin tools
 
@@ -40,7 +42,7 @@ Admin commands:
 - `/revenue` — show unrefunded Stars and verified manual totals by currency
 - `/refundpending` — list Stars refunds with an uncertain API result; `/refundresolve CHARGE_ID REFUNDED|NOT_REFUNDED` records the outcome after checking Telegram
 - `/giveaway TITLE | PREMIUM_DAYS | WINNERS`, public `/join GIVEAWAY_ID`, admin `/draw GIVEAWAY_ID`
-- `/broadcast announcement text` — preview and explicitly confirm before sending
+- `/broadcast announcement text` — preview and explicitly confirm before sending; alternatively reply to a Telegram message with `/broadcast` to copy its text or supported media to the registered, non-suspended audience
 
 The CI workflow checks Python compilation and imports, generates offline migration SQL, applies the complete Alembic chain to an ephemeral PostgreSQL 16 database, and runs unit tests. It does not test against your live database or Telegram. Back up an existing database before deploying schema changes. The bot logs Telegram button action labels and handler success/failure for troubleshooting, without logging user IDs or message contents. New Stars purchases are processed idempotently and record their Premium entitlement interval so refunds can reduce unused time without blindly deleting unrelated Premium time. Later tracked intervals are shifted when needed. Suspended users are blocked by update middleware and excluded from alert delivery and giveaway draws. Legacy payments created before this migration lack per-charge intervals; automated refunds are blocked for those records unless an admin explicitly uses `/refund CHARGE_ID ALLOW_LEGACY` after reviewing the account. That override leaves Premium expiry unchanged. Premium-only gas alerts and price alerts beyond the Free-plan allowance are paused when Premium expires, preserved in the account, and automatically unpaused when Premium returns. A Stars refund whose Telegram API result is ambiguous is marked pending reconciliation; do not retry it until the transaction has been checked.
 
