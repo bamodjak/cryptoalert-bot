@@ -25,6 +25,11 @@ log = logging.getLogger(__name__)
 alert_router = Router(name="alerts")
 
 
+def is_non_command_text(message: Message) -> bool:
+    """Keep slash commands routable while an interactive text prompt is active."""
+    return bool(message.text) and not message.text.startswith("/")
+
+
 class AlertCustomInput(StatesGroup):
     waiting = State()
     confirming = State()
@@ -363,7 +368,7 @@ async def cb_create_alert(
         return
 
 
-@alert_router.message(AlertCustomInput.waiting, F.text)
+@alert_router.message(AlertCustomInput.waiting, is_non_command_text)
 async def receive_custom_alert_value(
     m: Message, state: FSMContext, session: AsyncSession, prices: PriceService
 ):
@@ -469,7 +474,7 @@ async def cb_edit_alert(cb: CallbackQuery, session: AsyncSession, state: FSMCont
     await cb.answer()
 
 
-@alert_router.message(AlertEditInput.waiting, F.text)
+@alert_router.message(AlertEditInput.waiting, is_non_command_text)
 async def receive_alert_edit_value(message: Message, state: FSMContext, session: AsyncSession):
     user = await get_user(session, message.from_user)
     raw = (message.text or "").strip()
