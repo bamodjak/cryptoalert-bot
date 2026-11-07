@@ -836,7 +836,10 @@ async def resolve_pending_refund_cmd(m: Message, command: CommandObject, session
 
     payment.refunded = True
     payment.refund_pending = False
-    user = await session.get(User, payment.user_id)
+    user = await session.scalar(
+        select(User).where(User.id == payment.user_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
     note = " Premium expiry left unchanged."
     if user and payment.entitlement_tracked and payment.entitlement_start and payment.entitlement_end and user.premium_until:
         now = utcnow()
