@@ -146,3 +146,8 @@ The live trade stream and dashboard updater run under one Redis-elected runtime 
 Users can independently enable or disable price-alert and gas-alert categories in `/settings`; disabled categories retain their configured alerts. Premium research screens show the rule drivers behind each signal and an in-sample historical directional evaluation with sample counts and explicit fee/slippage limitations.
 
 Operational visibility includes Prometheus counters and gauges for alert delivery, live runtime ownership, Binance stream connectivity/reconnects, trade ingestion and Telegram dashboard edits. `/health` reports service readiness plus live-runtime and stream state.
+
+
+## Custom alert target input routing
+
+Custom exact-price and percentage targets are handled by the alert FSM in `app/alert_handlers.py`. The admin Premium-offer text handler runs earlier in the dispatcher; when no Premium offer edit is active it must raise aiogram's `SkipHandler`, allowing the same text update to reach the user's active alert-input state. Returning normally would consume numeric target messages for administrators and make custom alert entry appear unresponsive. A regression test in `tests/test_admin_handler_routing.py` protects this routing behavior.
