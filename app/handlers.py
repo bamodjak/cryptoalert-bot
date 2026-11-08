@@ -5,6 +5,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot, F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -472,7 +473,10 @@ async def save_offer_edit(message: Message, redis: Redis, session: AsyncSession)
     key = f"admin:offer:input:{message.from_user.id}"
     field = await redis.get(key)
     if field not in {"price", "days"}:
-        return
+        # This handler is registered on the admin router before user handlers.
+        # Let unrelated text (including numeric custom alert targets) continue
+        # through the dispatcher instead of consuming the update.
+        raise SkipHandler
 
     raw = (message.text or "").strip()
     maximum = 100000 if field == "price" else 3650
