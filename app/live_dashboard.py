@@ -81,6 +81,14 @@ def live_closed_keyboard(language: str) -> InlineKeyboardMarkup:
     ]])
 
 
+def stream_event_price(event: dict) -> float:
+    """Price from a Binance miniTicker ("c", last close) or trade ("p") event."""
+    raw = event.get("c", event.get("p"))
+    if raw is None:
+        raise KeyError("price")
+    return float(raw)
+
+
 def record_trade(pair: str, price: float, received_at: float | None = None) -> bool:
     """Store a validated market tick in memory without consuming Redis requests."""
     coin = PAIR_TO_COIN.get(pair.upper())
@@ -247,7 +255,10 @@ async def cb_live(callback: CallbackQuery, redis: Redis, session: AsyncSession, 
 
 async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: asyncio.Event) -> None:
     """Subscribe to public individual-trade events and cache the most recent price per coin."""
-    streams = "/".join(f"{pair}@trade" for _coin_id, _symbol, _name, pair in COINS if pair)
+    # miniTicker sends at most one update per second per pair. The raw @trade stream
+    # delivered hundreds of messages per second for BTC/ETH and kept a shared vCore at
+    # ~90% just decoding JSON; the dashboard only refreshes every 10 seconds anyway.
+    streams = "/".join(f"{pair.lower()}@miniTicker" for _coin_id, _symbol, _name, pair in COINS if pair)
     url = f"wss://stream.binance.com:9443/stream?streams={streams}"
     while not stop.is_set():
         try:
@@ -263,7 +274,7 @@ async def live_market_stream(redis: Redis, http: aiohttp.ClientSession, stop: as
                             coin = PAIR_TO_COIN.get(str(event.get("s", "")).upper())
                             if not coin:
                                 continue
-                            price = float(event["p"])
+                            price = stream_event_price(event)
                             if not math.isfinite(price) or price <= 0:
                                 continue
                             record_trade(str(event.get("s", "")), price)

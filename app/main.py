@@ -231,9 +231,21 @@ POLLING_LOCK_RETRY_SECONDS = 1
 POLLING_LOCK_RENEW_SECONDS = 10
 POLLING_TIMEOUT_SECONDS = 5
 
+# Set only by SIGINT/SIGTERM. Any other exit of main() is unexpected and the
+# process re-executes itself, because Botkeep does not restart stopped servers.
+shutdown_requested = False
+SELF_RESTART_DELAY_SECONDS = 10
+
 
 async def _renew_polling_lock(lock, dispatcher: Dispatcher, stop: asyncio.Event) -> None:
-    """Renew the singleton Telegram polling lease; stop polling if ownership is lost."""
+    """Renew the singleton Telegram polling lease.
+
+    Transient Redis errors (network blips to a managed Redis) must not stop the bot:
+    on a single-instance host nothing restarts a process that exits cleanly, so an
+    outage of a few seconds used to take the bot offline until someone pressed Start.
+    Polling stops only when another instance demonstrably owns the lease.
+    """
+    failures = 0
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=POLLING_LOCK_RENEW_SECONDS)
@@ -241,16 +253,29 @@ async def _renew_polling_lock(lock, dispatcher: Dispatcher, stop: asyncio.Event)
         except asyncio.TimeoutError:
             pass
         try:
-            if not await lock.extend(POLLING_LOCK_TTL_SECONDS, replace_ttl=True):
-                log.critical("Telegram polling lease renewal failed; stopping this poller")
-                stop.set()
-                await dispatcher.stop_polling()
-                return
-        except Exception:
-            log.exception("Telegram polling lease renewal errored; stopping this poller")
-            stop.set()
-            await dispatcher.stop_polling()
-            return
+            try:
+                owned = await lock.extend(POLLING_LOCK_TTL_SECONDS, replace_ttl=True)
+            except LockNotOwnedError:
+                owned = False
+            if not owned:
+                # The lease expired (e.g. Redis was briefly unreachable). Take it back
+                # if nobody else holds it; stop only if another poller owns it.
+                if await lock.acquire(blocking=False):
+                    log.warning("Telegram polling lease had expired; re-acquired it")
+                else:
+                    log.critical("Telegram polling lease is owned by another instance; stopping this poller")
+                    stop.set()
+                    await dispatcher.stop_polling()
+                    return
+            if failures:
+                log.info("Telegram polling lease renewal recovered after %s failed attempts", failures)
+            failures = 0
+        except Exception as exc:
+            failures += 1
+            log.warning(
+                "Telegram polling lease renewal failed (%s, attempt %s); polling continues and will retry",
+                type(exc).__name__, failures,
+            )
 
 
 async def run_polling_with_lock(
@@ -325,6 +350,30 @@ async def run_polling_with_lock(
             log.warning("Telegram polling lease was no longer owned at shutdown")
         except Exception:
             log.exception("Could not release Telegram polling lease")
+
+
+def _request_shutdown(stop: asyncio.Event) -> None:
+    global shutdown_requested
+    shutdown_requested = True
+    stop.set()
+
+
+def run_forever() -> None:
+    """Run the bot; if it ever stops without a shutdown signal, restart the process."""
+    import os
+    import sys
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        return
+    except Exception:
+        log.exception("bot crashed")
+    if shutdown_requested:
+        return
+    log.error("bot stopped unexpectedly; restarting in %ss", SELF_RESTART_DELAY_SECONDS)
+    time.sleep(SELF_RESTART_DELAY_SECONDS)
+    os.execv(sys.executable, [sys.executable, "-m", "app.main"])
 
 
 async def main() -> None:
@@ -405,7 +454,7 @@ async def main() -> None:
             log.info("webhook mode on :%s", settings.port)
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, stop.set)
+                loop.add_signal_handler(sig, _request_shutdown, stop)
             await stop.wait()
         else:
             runner = web.AppRunner(app)
@@ -415,7 +464,7 @@ async def main() -> None:
             log.info("polling mode (health on :%s)", settings.port)
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, stop.set)
+                loop.add_signal_handler(sig, _request_shutdown, stop)
             await run_polling_with_lock(dp, bot, redis, stop)
     finally:
         telegram_transport_ready = False
@@ -440,4 +489,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_forever()
