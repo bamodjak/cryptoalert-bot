@@ -1,3 +1,4 @@
+from app import live_dashboard
 from app.live_dashboard import COINS, PAIR_TO_COIN, format_dashboard
 
 
@@ -250,3 +251,14 @@ def test_live_dashboard_rejects_corrupt_cached_message_identity():
     )
     redis.hdel.assert_not_awaited()
     message.edit_text.assert_not_awaited()
+
+
+def test_stream_event_price_reads_mini_ticker_and_trade_events():
+    assert live_dashboard.stream_event_price({"s": "BTCUSDT", "c": "65000.5"}) == 65000.5
+    assert live_dashboard.stream_event_price({"s": "BTCUSDT", "p": "64000"}) == 64000.0
+    try:
+        live_dashboard.stream_event_price({"s": "BTCUSDT"})
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("missing price must raise")

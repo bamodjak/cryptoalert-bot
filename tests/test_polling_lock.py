@@ -89,6 +89,9 @@ def test_lost_polling_lease_stops_dispatcher_immediately():
         async def extend(self, ttl, replace_ttl=False):
             return False
 
+        async def acquire(self, blocking=False):
+            return False  # another instance owns the lease
+
     async def scenario():
         dispatcher = FakeDispatcher()
         stop = asyncio.Event()
@@ -103,3 +106,57 @@ def test_lost_polling_lease_stops_dispatcher_immediately():
         assert dispatcher.stopped.is_set()
 
     asyncio.run(scenario())
+
+
+def _run_renewal(lock, rounds_until_stop):
+    async def scenario():
+        dispatcher = FakeDispatcher()
+        stop = asyncio.Event()
+        lock.on_round = lambda n: stop.set() if n >= rounds_until_stop else None
+        original_interval = main.POLLING_LOCK_RENEW_SECONDS
+        main.POLLING_LOCK_RENEW_SECONDS = 0.001
+        try:
+            await asyncio.wait_for(main._renew_polling_lock(lock, dispatcher, stop), timeout=2)
+        finally:
+            main.POLLING_LOCK_RENEW_SECONDS = original_interval
+        return dispatcher
+
+    return asyncio.run(scenario())
+
+
+def test_transient_redis_errors_do_not_stop_polling():
+    class FlakyLease:
+        rounds = 0
+
+        async def extend(self, ttl, replace_ttl=False):
+            self.rounds += 1
+            self.on_round(self.rounds)
+            if self.rounds <= 3:
+                raise ConnectionError("redis blip")
+            return True
+
+        async def acquire(self, blocking=False):
+            raise AssertionError("should not re-acquire while extend works")
+
+    dispatcher = _run_renewal(FlakyLease(), rounds_until_stop=6)
+    assert not dispatcher.stopped.is_set()
+
+
+def test_expired_lease_is_reacquired_instead_of_stopping():
+    class ExpiredLease:
+        rounds = 0
+        acquired = 0
+
+        async def extend(self, ttl, replace_ttl=False):
+            self.rounds += 1
+            self.on_round(self.rounds)
+            return self.rounds > 1
+
+        async def acquire(self, blocking=False):
+            self.acquired += 1
+            return True
+
+    lock = ExpiredLease()
+    dispatcher = _run_renewal(lock, rounds_until_stop=3)
+    assert lock.acquired == 1
+    assert not dispatcher.stopped.is_set()
